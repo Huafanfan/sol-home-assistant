@@ -1,86 +1,105 @@
 # Sol Home Assistant
 
-一个以隐私、持续记忆和自然语音交互为中心的家庭 AI 助手。
+> 一个面向单房间、单已授权用户的家庭 AI 助手：隐私优先、语音优先、文档驱动。
 
-## 当前目标
+**项目状态：** 早期工程原型。Sol 还不是可以直接购买或安装的智能音箱，也不是生产级的家庭自动化系统。
 
-第一阶段只验证“一个房间、一个使用者”的完整闭环：
+Sol 想验证的是一件看似简单、实际需要清晰边界的事：家庭助手能否自然对话，同时不把每一段音频、每次聊天和每个偏好都变成不透明的云端数据。为此，项目把音频入口、会话控制、模型调用、记忆和未来的家庭工具分开设计，让每一层都能被替换、评测和审计。
 
-> 本地检测 “Hi Sol” → 语音连续对话 → 可以打断 → 会话被安全保存 → 只有经政策允许的信息进入长期记忆。
+## Sol 想实现的体验
 
-这不是一个把麦克风直接连到云端的智能音箱；本项目将声音入口、会话大脑、长期记忆和家庭工具分为独立边界。
+> 说“Hi Sol” → 本地唤醒 → 自然说话 → 随时打断 → 得到有用回答 → 只有明确允许的信息才成为长期记忆。
 
-## 已确认的工程原则
+Sol 不假定某一个模型或供应商可以安全地同时处理音频、推理、记忆和家庭操作。每项职责都有独立边界。
 
-- 唤醒词检测必须在本地完成；未唤醒状态的音频不离开设备。
-- Voice Satellite 不保存腾讯云、文本推理提供方或数据库凭据，也不直接拥有外部工具权限。
-- Voice Gateway 是会话、模型调用与权限校验的唯一入口。
-- 长期记忆不是原始转录的备份；写入、更新、删除均须通过可审计的 Memory Policy。
-- 首版只支持单用户、单房间、只读能力；智能家居写操作、多人识别和跨设备同步均后置。
-- 每个设备应有物理静音开关与明确的录音/连接状态提示。
-- 只有唤醒后的输入音频可以发送给腾讯云；文本推理代理只接收最小化、脱敏后的文本上下文。
+## 当前进展
 
-## 当前技术基线
+| 模块 | 状态 | 已经可以验证的内容 |
+| --- | --- | --- |
+| 语音会话核心 | 已实现 | 确定性的会话状态机、分阶段超时、取消传播、脱敏指标和本地诊断演示。 |
+| 文本深度推理适配器 | 已验证 | OpenAI-compatible 的纯文本适配器，包含模型探测、流式输出、取消、错误分类与本机私有配置。 |
+| 真实麦克风、唤醒词、VAD、ASR、TTS | 计划中 | 下一个主要里程碑：把 Mac mini 开发卫星接入腾讯云实时语音服务。 |
+| 长期记忆 | 计划中 | 保留策略、数据模型、删除语义和审计边界已经先行定义。 |
+| 智能家居写操作、联网搜索 | 不在 MVP 范围内 | 这些能力必须单独定义权限、确认、成本和审计规则。 |
 
-- 服务端：Node.js + TypeScript
-- 本地语音入口：唤醒词、VAD、采集/播放和物理静音均在 Satellite 完成
-- 实时语音：腾讯云实时 ASR 与实时 TTS；首版不依赖 OpenAI Realtime API 或官方 OpenAI API 密钥
-- 深度推理：可替换的 OpenAI-compatible 文本适配器；首个候选为本地部署的 CLIProxyAPI，实际模型、流式能力和工具能力均须通过启动探测验证
-- 联网搜索：不在 MVP 内；将来必须作为独立、可追溯来源的 Search Provider 接入，不能假定文本模型天然联网
-- 记忆：先采用可迁移的关系数据模型；PostgreSQL/pgvector 在需要语义检索时引入
-- 部署中心：首版使用当前持续运行的 Apple Silicon Mac mini；Voice Satellite 的音频路径首先以 macOS 宿主机进程运行
-- 服务运行时：OrbStack 的 Docker Engine + Docker Compose；Gateway、Memory 和未来基础服务容器化，Dockerfile 与 compose.yaml 保持 Linux arm64/amd64 可迁移，N100/Linux 是后续主机选择而非首版前提
+一句话概括：会话与文本推理的基础已经真实存在并完成测试；第一轮端到端语音对话仍在后续里程碑中。
 
-请从 [文档入口](docs/START-HERE.md) 开始，再查看 [架构说明](docs/architecture.md)、[Mac mini / OrbStack 部署基线](docs/deployment/macos-orbstack.md)、[腾讯云语音层说明](docs/providers/tencent-cloud.md)、[MVP 路线图](docs/mvp-plan.md) 和 [架构决策记录](docs/decisions/)。任何 T1 及以上功能都必须先有已接受的功能规格，具体执行规则见 [AGENTS.md](AGENTS.md)。
+## 架构一览
 
-## 当前范围外
+```mermaid
+flowchart LR
+    S["Voice Satellite\n本地唤醒、VAD、麦克风、扬声器、静音"]
+    G["Voice Gateway\n会话生命周期、路由、权限校验、取消"]
+    V["腾讯云语音层\n实时 ASR / TTS"]
+    R["Text Deep Reasoner\n可替换的 OpenAI-compatible 文本适配器"]
+    M["Memory Service\n受策略约束的会话、摘要与记忆"]
 
-- 在未完成隐私与权限设计前接入摄像头、门锁、报警器或其他高风险设备
-- 自动把全部历史对话写入长期记忆
-- 直接修改 ChatGPT 产品自己的 Memory
-- 将原始音频、完整转录或完整长期记忆直接转发给文本推理代理
-- 在未测试实际房间声学环境前承诺某个唤醒词或 AEC 方案的准确率
-- 将 Docker Socket 挂载给 Sol 服务，或把 Docker API 暴露到局域网
+    S <-->|"认证后的家庭局域网"| G
+    G --> V
+    G --> R
+    G --> M
+```
 
-## 目录
+这张图最重要的不是组件数量，而是边界：
 
-~~~text
-AGENTS.md             跨 session 的文档优先与验收约束
-docs/                 架构、分阶段计划与决策记录
-docs/START-HERE.md    当前状态、文档导航与 session 启动入口
-docs/decisions/       影响未来实现的可追溯决策
-docs/deployment/      Mac mini、Docker 与迁移边界
-docs/features/        按功能/模块建立的可实现规格
-docs/providers/       外部语音与推理提供方的边界、成本与验收说明
-docs/templates/       功能规格模板
-.env.example          仅变量名，绝不包含真实密钥
-~~~
+- 音频在本地唤醒前留在设备上；未唤醒音频不得离开 Voice Satellite。
+- 只有 Voice Gateway 持有云服务和数据库凭据。
+- 文本推理层只接收最终转写，以及策略允许时的最小化摘要；绝不接收原始音频、部分转写、完整历史或其他提供方凭据。
+- 记忆不是“把所有对话存起来”。长期写入必须经过明确策略，并支持审计和删除。
 
-## 下一步
+## 现在可以怎样体验
 
-VOICE-001 已交付可离线验证的会话编排核心。下一步是在保持同一文档门槛下，为真实腾讯云、文本上游和 macOS 音频适配器补充规格与运行验收；完整目标与验收顺序见 [MVP 路线图](docs/mvp-plan.md)。
+环境要求：Node.js 22 或更高版本，以及 npm。
 
-## 当前可运行的开发者诊断
-
-[VOICE-001](docs/features/VOICE-001-development-voice-session-core.md) 已实现会话状态机、取消传播、最小化文本边界和确定性适配器；它不是已验证的真实语音助手，也不读取任何云端凭据。
-
-~~~bash
+```bash
 npm install
 npm run check
 npm run demo
-~~~
+```
 
-`npm run demo` 只运行本地模拟的 ASR、文本推理、TTS 和播放，并输出脱敏状态/指标。真实腾讯云、文本上游、麦克风、扬声器、唤醒词和 VAD 的接入与验收仍是后续工作。
+`npm run demo` 是刻意保持本地、确定性的开发诊断：它模拟 ASR、文本推理、TTS 与播放，用来验证会话生命周期；它不会访问麦克风、腾讯云或真实模型提供方。
 
-## VOICE-002：文本推理上游的本机准备
+### 可选：验证自己的文本推理提供方
 
-VOICE-002 将 OpenAI-compatible 的文本上游收敛在 Gateway 内部；它只发送最终转写和可选的最小化摘要，不发送音频、部分转写、完整会话、长期记忆或工具定义。当前默认模型选择、探测范围和隐私边界以 [VOICE-002 规格](docs/features/VOICE-002-text-reasoner-readiness.md) 为准。
+如果你有 OpenAI-compatible 的文本 endpoint，可从 [`.env.example`](.env.example) 创建私有 `.env`，填入 `TEXT_REASONER_*` 配置后运行：
 
-当前进程已具备 `IVAN_ONLINE_API_URL` 与 `IVAN_ONLINE_API_KEY` 时，以下命令会以拒绝覆盖的方式创建权限为 0600、且已被 Git 忽略的本机 `.env`：
-
-~~~bash
-npm run bootstrap:text-reasoner -- --model=gpt-5.6-terra
+```bash
 npm run probe:text-reasoner
-~~~
+```
 
-第二个命令只输出脱敏的模型标识、能力和延迟统计；不会打印 endpoint、密钥、Authorization header、请求正文或模型回复正文。`.env` 已存在时，引导命令会失败而不会覆盖它。
+该探测只使用固定短提示，并只输出安全的能力元数据和延迟统计。`.env` 已被 Git 忽略；不要提交密钥、endpoint、转写内容或模型回复。
+
+## 路线图
+
+1. 打通真实 Mac mini 语音链路：麦克风、本地唤醒/VAD、腾讯云实时 ASR/TTS 与打断。
+2. 实现受策略约束的会话与记忆服务。
+3. 在常驻 Mac mini 上验证房间声学、恢复能力、成本和延迟。
+4. 在任何现实世界副作用之前，先加入低风险、只读的家庭集成。
+
+详细里程碑与验收标准请看 [MVP 路线图](docs/mvp-plan.md)，不在 README 中重复维护。
+
+## 文档与代码导航
+
+| 想了解什么 | 从这里开始 |
+| --- | --- |
+| 项目当前状态和文档地图 | [文档入口](docs/START-HERE.md) |
+| 系统边界与隐私模型 | [架构说明](docs/architecture.md) |
+| 单项功能的设计与验证证据 | [功能规格](docs/features/README.md) |
+| 提供方假设与验证边界 | [腾讯云 / 文本提供方说明](docs/providers/tencent-cloud.md) |
+| Mac mini 与容器部署基线 | [macOS / OrbStack 部署说明](docs/deployment/macos-orbstack.md) |
+| 重大选择为何如此决定 | [架构决策记录](docs/decisions/) |
+
+当前代码刻意保持很小：
+
+```text
+apps/voice-gateway/       Gateway 的组合入口和提供方配置
+packages/voice-session/   会话状态机与安全的适配器契约
+packages/text-reasoner/   OpenAI-compatible 文本适配器与探测支持
+docs/                      产品边界、决策、规格和验收证据
+```
+
+## 贡献与设计纪律
+
+这是一个文档优先的项目：每项功能在实现前，先用规格说明目标、隐私边界、失败语义和验收证据。README 只是公共概览；链接到的文档才是事实来源。
+
+计划或实现非简单变更前，请从 [AGENTS.md](AGENTS.md) 和 [文档入口](docs/START-HERE.md) 开始。不要把语音提供方、记忆保留、搜索、智能家居控制或凭据作为临时代码改动直接加入。
