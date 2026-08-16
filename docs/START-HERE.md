@@ -57,4 +57,4 @@
 | 规格 | 状态 | 下一步 |
 | --- | --- | --- |
 | [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | 为真实腾讯云/文本上游和 macOS 音频适配器补充规格与运行验收 |
-| [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `accepted` | 已完成受控模型探测；默认 `gpt-5.6-terra`，可开始实现 |
+| [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |

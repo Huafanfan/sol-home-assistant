@@ -18,6 +18,7 @@
   "include": [
     "apps/**/*.ts",
     "packages/**/*.ts",
+    "scripts/**/*.ts",
     "test/**/*.ts"
   ],
   "exclude": [

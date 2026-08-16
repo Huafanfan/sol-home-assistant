@@ -71,3 +71,16 @@ npm run demo
 ~~~
 
 `npm run demo` 只运行本地模拟的 ASR、文本推理、TTS 和播放，并输出脱敏状态/指标。真实腾讯云、文本上游、麦克风、扬声器、唤醒词和 VAD 的接入与验收仍是后续工作。
+
+## VOICE-002：文本推理上游的本机准备
+
+VOICE-002 将 OpenAI-compatible 的文本上游收敛在 Gateway 内部；它只发送最终转写和可选的最小化摘要，不发送音频、部分转写、完整会话、长期记忆或工具定义。当前默认模型选择、探测范围和隐私边界以 [VOICE-002 规格](docs/features/VOICE-002-text-reasoner-readiness.md) 为准。
+
+当前进程已具备 `IVAN_ONLINE_API_URL` 与 `IVAN_ONLINE_API_KEY` 时，以下命令会以拒绝覆盖的方式创建权限为 0600、且已被 Git 忽略的本机 `.env`：
+
+~~~bash
+npm run bootstrap:text-reasoner -- --model=gpt-5.6-terra
+npm run probe:text-reasoner
+~~~
+
+第二个命令只输出脱敏的模型标识、能力和延迟统计；不会打印 endpoint、密钥、Authorization header、请求正文或模型回复正文。`.env` 已存在时，引导命令会失败而不会覆盖它。

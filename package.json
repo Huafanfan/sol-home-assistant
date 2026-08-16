@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "npm run typecheck && npm run test",
-    "demo": "npm run build && node dist/apps/voice-demo/src/main.js"
+    "demo": "npm run build && node dist/apps/voice-demo/src/main.js",
+    "bootstrap:text-reasoner": "npm run build && node dist/scripts/bootstrap-text-reasoner-env.js",
+    "probe:text-reasoner": "npm run build && node --env-file=.env dist/scripts/probe-text-reasoner.js"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
