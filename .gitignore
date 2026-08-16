@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local data and recordings
+data/
+transcripts/
+recordings/
+*.wav
+*.mp3
+*.m4a
+*.sqlite
+*.sqlite3
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# OS and editor files
+.DS_Store
+.vscode/
