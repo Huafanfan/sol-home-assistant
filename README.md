@@ -58,4 +58,16 @@ docs/templates/       功能规格模板
 
 ## 下一步
 
-当前方案已足以开始第一项功能的规格设计。先从模板建立并接受 Mac mini 上“本地唤醒 → 腾讯云 ASR → 文本推理 → 腾讯云 TTS”闭环的功能规格，再开始实现和硬件测试。具体验收标准见 [MVP 路线图](docs/mvp-plan.md)。
+VOICE-001 已交付可离线验证的会话编排核心。下一步是在保持同一文档门槛下，为真实腾讯云、文本上游和 macOS 音频适配器补充规格与运行验收；完整目标与验收顺序见 [MVP 路线图](docs/mvp-plan.md)。
+
+## 当前可运行的开发者诊断
+
+[VOICE-001](docs/features/VOICE-001-development-voice-session-core.md) 已实现会话状态机、取消传播、最小化文本边界和确定性适配器；它不是已验证的真实语音助手，也不读取任何云端凭据。
+
+~~~bash
+npm install
+npm run check
+npm run demo
+~~~
+
+`npm run demo` 只运行本地模拟的 ASR、文本推理、TTS 和播放，并输出脱敏状态/指标。真实腾讯云、文本上游、麦克风、扬声器、唤醒词和 VAD 的接入与验收仍是后续工作。

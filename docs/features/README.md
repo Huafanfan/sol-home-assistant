@@ -4,6 +4,6 @@
 
 当前规格：
 
-- [VOICE-001：开发机语音会话编排核心](VOICE-001-development-voice-session-core.md)（`accepted`，待实现）
+- [VOICE-001：开发机语音会话编排核心](VOICE-001-development-voice-session-core.md)（`implemented`，待真实语音运行验收）
 
 开始新功能时，从 [`../templates/feature-spec.md`](../templates/feature-spec.md) 创建 `docs/features/<feature>.md`；先完成并接受规格，再修改实现。完整流程和状态定义以 [`../../AGENTS.md`](../../AGENTS.md) 与 [`../START-HERE.md`](../START-HERE.md) 为准。

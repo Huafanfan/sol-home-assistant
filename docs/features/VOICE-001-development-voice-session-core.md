@@ -6,13 +6,13 @@
 
 | 字段 | 内容 |
 | --- | --- |
-| 状态 | `accepted` |
+| 状态 | `implemented` |
 | 变更等级 | `T2` |
 | 创建日期 | 2026-08-16 |
 | 最后文档复核 | 2026-08-16 |
 | 设计依据 | 用户已授权开始第一项功能；MVP 路线图“开发机语音闭环” |
 | 关联 ADR | [ADR-0001](../decisions/ADR-0001-first-mvp-boundary.md)、[ADR-0002](../decisions/ADR-0002-tencent-voice-and-text-reasoner.md)、[ADR-0003](../decisions/ADR-0003-mac-mini-orbstack-deployment.md)、[ADR-0004](../decisions/ADR-0004-documentation-driven-development.md) |
-| 预计实现路径 | `packages/voice-session/`、`apps/voice-gateway/`、`apps/voice-demo/`、对应测试与根目录工程配置 |
+| 预计实现路径 | `packages/voice-session/src/`、`apps/voice-gateway/src/`、`apps/voice-demo/src/`、`test/voice-session.test.ts` 与根目录 TypeScript 工程配置 |
 | 验收负责人 | Codex：静态与自动化证据；用户：凭据、真实音频与腾讯云运行验收 |
 
 ## 1. 目标与非目标
@@ -113,13 +113,13 @@ CLOSING
 
 自动化验收（本功能完成前必须通过）：
 
-- [ ] 确定性模拟闭环从手动开始进入 `ASR_STREAMING`，收到最终转写后按路由进入文本/TTS，最终回到 `IDLE`。
-- [ ] 在 `IDLE` 交付音频帧被拒绝，且 ASR 适配器未被调用。
-- [ ] 文本推理适配器的输入只含最终转写与最小化摘要；测试能证明原始音频帧不在其请求对象中。
-- [ ] 在 ASR、推理、TTS、播放的每个阶段打断，会取消活跃任务、停止播放，且不会处理后续输出。
-- [ ] 任一适配器的超时/错误都使会话关闭，不产生无限重试，也不进入下一外部阶段。
-- [ ] 指标测试确认日志载荷不含原始音频、完整转写、回答文本、密钥字段或长期记忆字段。
-- [ ] TypeScript 编译、静态检查和测试命令在无腾讯云/文本上游凭据环境中运行。
+- [x] 确定性模拟闭环从手动开始进入 `ASR_STREAMING`，收到最终转写后按路由进入文本/TTS，最终回到 `IDLE`。
+- [x] 在 `IDLE` 交付音频帧被拒绝，且 ASR 适配器未被调用。
+- [x] 文本推理适配器的输入只含最终转写与最小化摘要；测试能证明原始音频帧不在其请求对象中。
+- [x] 在 ASR、推理、TTS、播放的每个阶段打断，会取消活跃任务、停止播放，且不会处理后续输出。
+- [x] Gateway 的 ASR、路由、推理、TTS 与播放均有分阶段超时；任一适配器的超时/错误都会广播取消、关闭会话，不产生无限重试，也不进入下一外部阶段。
+- [x] 指标测试确认日志载荷不含原始音频、完整转写、回答文本、密钥字段或长期记忆字段。
+- [x] TypeScript 编译、静态检查和测试命令在无腾讯云/文本上游凭据环境中运行。
 
 真实运行验收（本规格不会提前宣称通过）：
 
@@ -139,11 +139,11 @@ CLOSING
 
 | 项目 | 证据 |
 | --- | --- |
-| 实现路径 | 待实现 |
-| 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md` |
-| 静态检查 | 待实现 |
-| 自动化测试 | 待实现 |
-| 真实运行/人工验收 | 尚未开始；需要腾讯云凭据、文本上游与本机音频设备 |
+| 实现路径 | `packages/voice-session/src/` 的状态机、分阶段超时/取消、内存音频队列、脱敏指标与确定性适配器；`apps/voice-gateway/src/` 的 Gateway 组合根；`apps/voice-demo/src/main.ts`；`test/voice-session.test.ts` |
+| 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md`、`README.md`；不改变 ADR-0001/2/3 的既有决定 |
+| 静态检查 | `npm run typecheck` 通过（2026-08-16） |
+| 自动化测试 | `npm run check` 通过：9/9 Node 原生测试（2026-08-16） |
+| 真实运行/人工验收 | `npm run demo` 已完成离线确定性诊断（`completed` / `IDLE`）；尚未进行腾讯云、文本上游、麦克风或扬声器真实验证 |
 | 已知限制或未验证假设 | 真实腾讯云协议、文本上游流式/取消能力、音频设备、VAD/AEC/唤醒词均未验证 |
 
 ## 10. 复核记录
@@ -151,3 +151,4 @@ CLOSING
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
 | 2026-08-16 | 首次建立 VOICE-001 | `AGENTS.md`、START-HERE、架构、MVP、ADR-0001/2/3/4、腾讯云与部署文档 | `accepted`；先交付确定性会话编排核心，再做真实提供方/音频验收 |
+| 2026-08-16 | 会话编排核心实现 | 本规格及其关联架构/ADR | `implemented`；自动化与离线诊断通过，真实语音验收仍未开始 |

@@ -9,7 +9,7 @@
 - 产品边界：单房间、单已授权用户、无现实世界副作用的 MVP。
 - 中心主机：现有 Apple Silicon Mac mini；容器运行时为 OrbStack Docker Engine 与 Docker Compose。
 - 语音链路：本地唤醒/VAD → 腾讯云实时 ASR/TTS → Gateway → 可替换的文本深度推理适配器。
-- 当前阶段：架构、提供方和部署基线已接受；第一项功能规格 VOICE-001 已接受，尚未开始实现。
+- 当前阶段：架构、提供方和部署基线已接受；VOICE-001 的确定性会话编排核心已实现并通过自动化测试，真实语音链路尚未验证。
 
 当前实现入口是 [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md)。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
 
@@ -56,4 +56,4 @@
 
 | 规格 | 状态 | 下一步 |
 | --- | --- | --- |
-| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `accepted` | 仅文档提交后，实现确定性会话编排与测试 |
+| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | 为真实腾讯云/文本上游和 macOS 音频适配器补充规格与运行验收 |
