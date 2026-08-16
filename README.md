@@ -31,7 +31,7 @@
 - 部署中心：首版使用当前持续运行的 Apple Silicon Mac mini；Voice Satellite 的音频路径首先以 macOS 宿主机进程运行
 - 服务运行时：OrbStack 的 Docker Engine + Docker Compose；Gateway、Memory 和未来基础服务容器化，Dockerfile 与 compose.yaml 保持 Linux arm64/amd64 可迁移，N100/Linux 是后续主机选择而非首版前提
 
-请查看 [架构说明](docs/architecture.md)、[Mac mini / OrbStack 部署基线](docs/deployment/macos-orbstack.md)、[腾讯云语音层说明](docs/providers/tencent-cloud.md)、[MVP 路线图](docs/mvp-plan.md)、[ADR-0002](docs/decisions/ADR-0002-tencent-voice-and-text-reasoner.md) 和 [ADR-0003](docs/decisions/ADR-0003-mac-mini-orbstack-deployment.md)。
+请从 [文档入口](docs/START-HERE.md) 开始，再查看 [架构说明](docs/architecture.md)、[Mac mini / OrbStack 部署基线](docs/deployment/macos-orbstack.md)、[腾讯云语音层说明](docs/providers/tencent-cloud.md)、[MVP 路线图](docs/mvp-plan.md) 和 [架构决策记录](docs/decisions/)。任何 T1 及以上功能都必须先有已接受的功能规格，具体执行规则见 [AGENTS.md](AGENTS.md)。
 
 ## 当前范围外
 
@@ -45,13 +45,17 @@
 ## 目录
 
 ~~~text
+AGENTS.md             跨 session 的文档优先与验收约束
 docs/                 架构、分阶段计划与决策记录
+docs/START-HERE.md    当前状态、文档导航与 session 启动入口
 docs/decisions/       影响未来实现的可追溯决策
 docs/deployment/      Mac mini、Docker 与迁移边界
+docs/features/        按功能/模块建立的可实现规格
 docs/providers/       外部语音与推理提供方的边界、成本与验收说明
+docs/templates/       功能规格模板
 .env.example          仅变量名，绝不包含真实密钥
 ~~~
 
 ## 下一步
 
-当前方案已足以进入实现，但先完成 Mac mini 上的“本地唤醒 → 腾讯云 ASR → 文本推理 → 腾讯云 TTS”闭环，再选择并测试第一套麦克风/扬声器硬件。具体验收标准见 [MVP 路线图](docs/mvp-plan.md)。
+当前方案已足以开始第一项功能的规格设计。先从模板建立并接受 Mac mini 上“本地唤醒 → 腾讯云 ASR → 文本推理 → 腾讯云 TTS”闭环的功能规格，再开始实现和硬件测试。具体验收标准见 [MVP 路线图](docs/mvp-plan.md)。

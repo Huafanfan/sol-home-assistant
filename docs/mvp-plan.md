@@ -1,5 +1,11 @@
 # 单房间 MVP 路线图
 
+## 实施前门槛
+
+本路线图列出的每一项“实现”工作，在修改代码、部署配置或数据模型前，必须先建立并接受对应的功能规格。规格使用 [`templates/feature-spec.md`](templates/feature-spec.md) 创建为 `docs/features/<feature>.md`，并按 [ADR-0004](decisions/ADR-0004-documentation-driven-development.md) 和 [`../AGENTS.md`](../AGENTS.md) 的规则回填验收证据。
+
+涉及供应商、成本、隐私、权限、部署或不可逆副作用的工作还必须先有 ADR；不得只因为路线图列出了一个方向，就跳过设计和确认门槛。
+
 ## 0. 先写清楚可验收的产品边界
 
 - 首版用户：一个已授权的家庭成员。
