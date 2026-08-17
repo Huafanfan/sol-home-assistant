@@ -135,7 +135,7 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 - [ ] 配置校验拒绝缺失/空白凭据、非数字 AppID、未知 ASR profile、非正整数 VoiceType 和越界超时；错误不含配置值、长度或指纹。
 - [ ] 签名测试使用固定时钟/随机数验证规范化、排序、编码与签名结果，同时证明日志/错误不含 SecretId、SecretKey、Signature 或完整 URL。
 - [ ] mock ASR 覆盖握手、PCM 节流、部分/最终结果、无最终结果、协议错误、超时和 `AbortSignal`；只有最终结果进入 VOICE-001。
-- [ ] mock TTS 覆盖握手、READY、音频块、完成、空音频、提供方错误、超时和 `AbortSignal`；取消后没有音频进入播放或 Probe 回送。
+- [ ] mock TTS 覆盖签名握手、WebSocket 打开、音频块、`final=1` 完成、空音频、提供方错误、超时和 `AbortSignal`；取消后没有音频进入播放或 Probe 回送。
 - [ ] 适配器可被 Voice Gateway 注入 VOICE-001，ASR/TTS 任一失败都遵守既有关闭语义且不自动重试。
 - [ ] Probe 默认只做离线配置/签名自检；没有显式真实调用确认参数时不会建立网络连接。
 - [ ] Probe 报告不含凭据、签名、完整 URL、固定文本正文、完整转写或音频字节。
