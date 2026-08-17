@@ -168,13 +168,14 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 | 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md`、VOICE-001 状态表述、`README.md` 与 `.env.example`；不新增 ADR |
 | 静态检查 | `npm run typecheck` 通过（2026-08-17） |
 | 自动化测试 | `npm run check` 通过，29/29；其中 11 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界以及 Probe 的默认无网络和全 mock 受控路径 |
-| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行一次受控 Probe；首个 TTS WebSocket 握手返回脱敏分类 `auth`，未生成音频，ASR 未调用。随后对照[腾讯官方 Python TTS WebSocket SDK](https://github.com/TencentCloud/tencentcloud-speech-sdk-python/blob/master/tts/speech_synthesizer_ws.py)补齐 `ModelType=1` 并将 ASR/TTS 签名有效期与官方 SDK 对齐为 24 小时；未在同一授权下自动重试真实调用 |
-| 已知限制或未验证假设 | 修正后的签名尚未真实复测；若仍鉴权失败，需核对子账号 TTS 权限和 AppID 是否属于同一主账号。本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
+| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行两次各自获得授权的受控 Probe；两次均在首个 TTS WebSocket 握手返回脱敏分类 `auth`，未生成音频，ASR 未调用。第一次后已对照[腾讯官方 Python TTS WebSocket SDK](https://github.com/TencentCloud/tencentcloud-speech-sdk-python/blob/master/tts/speech_synthesizer_ws.py)补齐 `ModelType=1` 并将 ASR/TTS 签名有效期对齐为 24 小时；修正后的第二次结果不变 |
+| 已知限制或未验证假设 | 签名协议差异已用官方 SDK 和 known-vector 测试排除为唯一原因；当前最高概率是子账号未关联 `QcloudTTSFullAccess`/等价自定义权限，或 AppID 与密钥不属于同一主账号。本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
 
 ## 10. 复核记录
 
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
+| 2026-08-17 | 修正后第二次受控 Probe | 使用同一最小复现回路验证官方 SDK 对齐后的签名；TTS 仍稳定返回 `auth`，无音频、无 ASR 调用。复核腾讯官方 CAM 指引确认可用预设策略 `QcloudTTSFullAccess` | 签名修正不是唯一根因；停止真实重试，转为核对子账号 TTS 权限和 AppID/密钥主账号归属 |
 | 2026-08-17 | 首次受控真实 Probe 与签名差分 | 新密钥与本机安全门通过；TTS 握手稳定返回 `auth`。对照腾讯官方 TTS/ASR Python SDK，新增签名 known-vector 回归断言，补齐 TTS `ModelType=1`，并把两类签名有效期对齐为官方的 24 小时 | 真实验收仍未通过；29/29 自动化测试通过，等待新的单次真实 Probe 授权后区分签名修正与 CAM/AppID 配置问题 |
 | 2026-08-17 | 离线实现与自动化验收 | 本规格及其关联架构/ADR；对照腾讯云实时 ASR/TTS 官方协议实现固定主机签名、PCM 流、取消/超时和默认无网络 Probe | `implemented`；静态检查、29/29 测试、离线 demo 与 Probe 无网络证明通过，真实腾讯云 Probe 仍未授权或执行 |
 | 2026-08-17 | 首次建立 VOICE-003 | `AGENTS.md`、START-HERE、架构、MVP、ADR-0001/2/3/4、VOICE-001/002、腾讯云 Provider 文档与功能模板 | `accepted`；可以开始离线实现与 mock 测试，真实 Probe 继续等待安全新密钥、计费确认和明确调用授权 |
