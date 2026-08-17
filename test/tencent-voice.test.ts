@@ -265,6 +265,7 @@ test("builds deterministic official-host ASR and TTS signatures", () => {
   assert.match(asr.url, /^wss:\/\/asr\.cloud\.tencent\.com\/asr\/v2\/1234567890\?/);
   assert.equal(asr.url.includes("TEST_SECRET_KEY"), false);
   assert.equal(asr.canonicalSource.includes("wss://"), false);
+  assert.equal(asr.canonicalSource.includes("expired=1700086400"), true);
   assert.equal(asr.canonicalSource.includes("engine_model_type=16k_zh"), true);
 
   const tts = buildTtsSignedRequest(config(), "固定测试", dependencies);
@@ -274,8 +275,15 @@ test("builds deterministic official-host ASR and TTS signatures", () => {
   assert.equal(tts.signature, expectedTtsSignature);
   assert.match(tts.url, /^wss:\/\/tts\.cloud\.tencent\.com\/stream_ws\?/);
   assert.equal(tts.url.includes("TEST_SECRET_KEY"), false);
-  assert.equal(tts.canonicalSource.startsWith("GETtts.cloud.tencent.com/stream_ws?"), true);
-  assert.equal(tts.canonicalSource.includes("VoiceType=101001"), true);
+  assert.equal(
+    tts.canonicalSource,
+    "GETtts.cloud.tencent.com/stream_ws?" +
+      "Action=TextToStreamAudioWS&AppId=1234567890&Codec=pcm&" +
+      "EnableSubtitle=False&Expired=1700086400&ModelType=1&" +
+      "SampleRate=16000&SecretId=TEST_SECRET_ID&" +
+      "SessionId=test-session-id&Speed=0&Text=固定测试&" +
+      "Timestamp=1700000000&VoiceType=101001&Volume=0",
+  );
 });
 
 test("streams paced PCM to ASR and returns only final sentence slices", async () => {

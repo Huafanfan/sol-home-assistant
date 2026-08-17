@@ -6,6 +6,7 @@ const ASR_HOST = "asr.cloud.tencent.com";
 const ASR_PATH_PREFIX = "/asr/v2/";
 const TTS_HOST = "tts.cloud.tencent.com";
 const TTS_PATH = "/stream_ws";
+const SIGNATURE_VALIDITY_SECONDS = 24 * 60 * 60;
 
 export interface TencentSigningDependencies {
   readonly now?: () => number;
@@ -67,7 +68,7 @@ export function buildAsrSignedRequest(
   const resolved = resolveDependencies(dependencies);
   const parameters: Readonly<Record<string, string>> = {
     engine_model_type: config.asrEngineModelType,
-    expired: String(resolved.timestamp + 60),
+    expired: String(resolved.timestamp + SIGNATURE_VALIDITY_SECONDS),
     filter_dirty: "1",
     filter_modal: "1",
     filter_punc: "1",
@@ -99,7 +100,8 @@ export function buildTtsSignedRequest(
     AppId: config.appId,
     Codec: "pcm",
     EnableSubtitle: "False",
-    Expired: String(resolved.timestamp + 60),
+    Expired: String(resolved.timestamp + SIGNATURE_VALIDITY_SECONDS),
+    ModelType: "1",
     SampleRate: "16000",
     SecretId: config.secretId,
     SessionId: resolved.id,
