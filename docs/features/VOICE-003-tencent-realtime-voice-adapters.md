@@ -143,8 +143,8 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 
 受控真实探测（必须另行获得用户授权）：
 
-- [ ] 使用新生成且只存在于本机 `.env` 的专用子账号密钥完成鉴权；报告不显示 AppID、SecretId、SecretKey、签名或完整 URL。
-- [ ] 固定短文本通过实时 TTS 得到非空 16k PCM，记录首音频与完成延迟、字符数和音频秒数。
+- [x] 使用新生成且只存在于本机 `.env` 的专用子账号密钥完成鉴权；报告不显示 AppID、SecretId、SecretKey、签名或完整 URL。
+- [x] 固定短文本通过实时 TTS 得到非空 16k PCM，安全报告记录完成延迟、字符数和音频秒数；第五次 Probe 能进入后续 ASR 阶段也构成 TTS 完成证据。
 - [ ] 临时 PCM 通过实时 ASR 得到至少一个最终结果，记录首部分/最终结果延迟和音频秒数；只以布尔/长度范围验证结果，不打印正文。
 - [ ] 独立取消测试证明本地连接关闭且取消后的提供方数据不会进入 VOICE-001；不宣称服务端已停止计费。
 - [ ] 本轮调用次数与用量未超过规格上限，并由用户复核控制台用量/计费状态。
@@ -168,13 +168,14 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 | 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md`、VOICE-001 状态表述、`README.md` 与 `.env.example`；不新增 ADR |
 | 静态检查 | `npm run typecheck` 通过（2026-08-17） |
 | 自动化测试 | `npm run check` 通过，30/30；其中 12 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界、Probe 默认无网络/全 mock 路径，以及失败时只暴露 stage、安全错误码和数字 providerCode 的诊断包络 |
-| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行四次各自获得授权的受控 Probe。前三次均在首个 TTS WebSocket 握手返回 `auth`；签名已对齐官方 SDK，用户也关联了 TTS/ASR 权限。用户把 `.env` 的 AppID 修正为同一主账号 AppID 后，第四次不再返回 `auth`，而进入 `protocol_error`，证明账号鉴权问题已解决；旧 Probe 版本尚未输出安全 stage，无法据此区分 TTS 响应还是后续 ASR 音频协议 |
-| 已知限制或未验证假设 | AppID 归属错误已确认是此前鉴权失败的原因；当前 `protocol_error` 仍需一次带安全 stage/providerCode 包络的受控 Probe 才能最小化到 TTS 或 ASR。本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
+| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行五次各自获得授权的受控 Probe。前三次均在首个 TTS WebSocket 握手返回 `auth`；修正主账号 AppID 后第四次通过鉴权并进入后续协议。加入安全 stage/providerCode 包络后，第五次返回 `stage=asr`、`code=protocol_error`、`providerCode=6001`：真实 TTS 已完成，ASR 被地域/网络出口边界拒绝；全程未输出或持久化凭据、正文、转写或音频 |
+| 已知限制或未验证假设 | 腾讯云官方将 ASR `6001` 解释为境外调用，要求国内站用户关闭境外代理；本机检查确认当前 shell 的 `HTTP_PROXY`/`HTTPS_PROXY` 均指向本机回环代理，但尚未验证其实际出口地域。需要把 ASR/TTS 域名改为中国大陆直连后，再获得一次单次授权复测。ASR 最终结果、真实取消和控制台用量仍未验收；本机音频、VAD/AEC/唤醒词不在本功能范围 |
 
 ## 10. 复核记录
 
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
+| 2026-08-17 | 第五次受控 Probe 与 ASR 错误最小化 | 使用新增安全诊断包络执行一次且未重试；返回 `stage=asr`、`providerCode=6001`。复核腾讯云实时语音识别官方错误码说明，并只读检查当前 shell 代理是否启用，不输出代理地址或凭据 | 鉴权与真实 TTS 已通过；ASR 被国内站账号经境外代理调用的地域边界阻塞。当前 `HTTP_PROXY`/`HTTPS_PROXY` 指向本机回环代理；改为中国大陆直连后再申请一次复测授权 |
 | 2026-08-17 | 修正主账号 AppID 后第四次受控 Probe | 用户将 `.env` AppID 修正为签发当前子账号密钥的主账号 AppID；同一 Probe 从稳定 `auth` 前进为 `protocol_error`。随后新增安全 Probe 错误包络和 mock 回归测试，禁止输出 provider message、URL、文本或音频 | 已确认 AppID 归属错误是鉴权根因；30/30 自动化测试通过，等待下一次单次授权以定位新协议错误的 provider stage/code |
 | 2026-08-17 | 权限变更后第三次受控 Probe | 用户报告完成 TTS/ASR 权限调整；同一最小 Probe 仍返回 `auth`。使用当前本机配置在内存中把实现与官方 SDK 算法逐字段差分，canonical string 与签名完全一致，且未输出参数、签名或凭据 | 停止真实重试；本地签名已排除，下一步只核对 AppID、密钥、服务开通与策略关联是否落在同一主账号/子用户 |
 | 2026-08-17 | 修正后第二次受控 Probe | 使用同一最小复现回路验证官方 SDK 对齐后的签名；TTS 仍稳定返回 `auth`，无音频、无 ASR 调用。复核腾讯官方 CAM 指引确认可用预设策略 `QcloudTTSFullAccess` | 签名修正不是唯一根因；停止真实重试，转为核对子账号 TTS 权限和 AppID/密钥主账号归属 |
