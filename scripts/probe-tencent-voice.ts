@@ -36,6 +36,30 @@ export interface TencentVoiceProbeOptions {
   readonly ttsDependencies?: TencentTtsDependencies;
 }
 
+export type TencentVoiceProbeStage = "tts" | "asr";
+
+/** Safe diagnostic envelope: never retains provider message, URL, or content. */
+export class TencentVoiceProbeError extends Error {
+  public constructor(
+    public readonly stage: TencentVoiceProbeStage,
+    public readonly code: TencentVoiceProviderError["code"] | "unknown_error",
+    public readonly providerCode: number | undefined = undefined,
+  ) {
+    super(`Tencent voice probe failed: ${stage}:${code}`);
+    this.name = "TencentVoiceProbeError";
+  }
+}
+
+function probeError(
+  stage: TencentVoiceProbeStage,
+  error: unknown,
+): TencentVoiceProbeError {
+  if (error instanceof TencentVoiceProviderError) {
+    return new TencentVoiceProbeError(stage, error.code, error.providerCode);
+  }
+  return new TencentVoiceProbeError(stage, "unknown_error");
+}
+
 async function* audioChunks(
   chunks: readonly Uint8Array[],
 ): AsyncIterable<Uint8Array> {
@@ -78,18 +102,27 @@ export async function runTencentVoiceProbe(
   const signal = new AbortController().signal;
   const chunks: Uint8Array[] = [];
   let byteCount = 0;
-  for await (const chunk of tts.synthesize(PROBE_TEXT, { signal })) {
-    byteCount += chunk.byteLength;
-    if (byteCount > MAX_PCM_BYTES) {
-      throw new TencentVoiceProviderError("invalid_request");
+  try {
+    for await (const chunk of tts.synthesize(PROBE_TEXT, { signal })) {
+      byteCount += chunk.byteLength;
+      if (byteCount > MAX_PCM_BYTES) {
+        throw new TencentVoiceProviderError("invalid_request");
+      }
+      chunks.push(chunk);
     }
-    chunks.push(chunk);
+  } catch (error: unknown) {
+    throw probeError("tts", error);
   }
 
-  const result = await asr.transcribe(audioChunks(chunks), {
-    signal,
-    onPartialTranscript: () => undefined,
-  });
+  let result: Awaited<ReturnType<TencentRealtimeAsr["transcribe"]>>;
+  try {
+    result = await asr.transcribe(audioChunks(chunks), {
+      signal,
+      onPartialTranscript: () => undefined,
+    });
+  } catch (error: unknown) {
+    throw probeError("asr", error);
+  }
 
   return {
     mode: "controlled-live",
@@ -112,12 +145,23 @@ async function main(): Promise<void> {
     });
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } catch (error: unknown) {
-    const code =
-      error instanceof TencentVoiceConfigurationError ||
-      error instanceof TencentVoiceProviderError
-        ? error.code
-        : "unknown_error";
-    process.stderr.write(`${JSON.stringify({ ok: false, code })}\n`);
+    const safeFailure =
+      error instanceof TencentVoiceProbeError
+        ? {
+            ok: false,
+            stage: error.stage,
+            code: error.code,
+            providerCode: error.providerCode,
+          }
+        : {
+            ok: false,
+            code:
+              error instanceof TencentVoiceConfigurationError ||
+              error instanceof TencentVoiceProviderError
+                ? error.code
+                : "unknown_error",
+          };
+    process.stderr.write(`${JSON.stringify(safeFailure)}\n`);
     process.exitCode = 1;
   }
 }

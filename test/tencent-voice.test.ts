@@ -592,3 +592,24 @@ test("controlled Probe path is bounded and report-only under mocked providers", 
   assert.equal(serialized.includes("固定结果"), false);
   assert.equal(serialized.includes("TEST_SECRET"), false);
 });
+
+test("controlled Probe failures identify only the safe provider stage", async () => {
+  const ttsMock = ttsFactory({ providerCode: 10005 });
+  await assert.rejects(
+    runTencentVoiceProbe({
+      environment: environment(),
+      confirmBillable: true,
+      ttsDependencies: { webSocketFactory: ttsMock.factory },
+    }),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "stage" in error &&
+      error.stage === "tts" &&
+      "code" in error &&
+      error.code === "protocol_error" &&
+      "providerCode" in error &&
+      error.providerCode === 10005 &&
+      !String(error).includes("UNSAFE_PROVIDER_MESSAGE"),
+  );
+});

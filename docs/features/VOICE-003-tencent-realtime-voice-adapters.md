@@ -167,14 +167,15 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 | 实现路径 | `packages/tencent-voice/src/`（安全配置、固定官方主机签名、WebSocket 抽象、实时 ASR/TTS 适配器与错误分类）、`apps/voice-gateway/src/config/tencent-voice.ts`（Gateway 组合）、`scripts/probe-tencent-voice.ts`（默认离线、显式计费确认门）与 `test/tencent-voice.test.ts` |
 | 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md`、VOICE-001 状态表述、`README.md` 与 `.env.example`；不新增 ADR |
 | 静态检查 | `npm run typecheck` 通过（2026-08-17） |
-| 自动化测试 | `npm run check` 通过，29/29；其中 11 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界以及 Probe 的默认无网络和全 mock 受控路径 |
-| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行三次各自获得授权的受控 Probe；三次均在首个 TTS WebSocket 握手返回脱敏分类 `auth`，未生成音频，ASR 未调用。第一次后已对照[腾讯官方 Python TTS WebSocket SDK](https://github.com/TencentCloud/tencentcloud-speech-sdk-python/blob/master/tts/speech_synthesizer_ws.py)补齐 `ModelType=1` 并将 ASR/TTS 签名有效期对齐为 24 小时；第二次结果不变。用户报告关联 TTS/ASR 权限后第三次结果仍不变；随后用当前本机配置进行纯内存差分，canonical string 与 HMAC-SHA1 签名均与官方 SDK 算法完全一致 |
-| 已知限制或未验证假设 | 本地签名协议、密钥格式和系统时间已排除为高概率原因；当前最高概率是 AppID、当前 SecretId/SecretKey、TTS 服务开通/免费包和权限策略并不属于同一主账号与同一子用户链路，或策略关联到了其他子用户。本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
+| 自动化测试 | `npm run check` 通过，30/30；其中 12 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界、Probe 默认无网络/全 mock 路径，以及失败时只暴露 stage、安全错误码和数字 providerCode 的诊断包络 |
+| 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行四次各自获得授权的受控 Probe。前三次均在首个 TTS WebSocket 握手返回 `auth`；签名已对齐官方 SDK，用户也关联了 TTS/ASR 权限。用户把 `.env` 的 AppID 修正为同一主账号 AppID 后，第四次不再返回 `auth`，而进入 `protocol_error`，证明账号鉴权问题已解决；旧 Probe 版本尚未输出安全 stage，无法据此区分 TTS 响应还是后续 ASR 音频协议 |
+| 已知限制或未验证假设 | AppID 归属错误已确认是此前鉴权失败的原因；当前 `protocol_error` 仍需一次带安全 stage/providerCode 包络的受控 Probe 才能最小化到 TTS 或 ASR。本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
 
 ## 10. 复核记录
 
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
+| 2026-08-17 | 修正主账号 AppID 后第四次受控 Probe | 用户将 `.env` AppID 修正为签发当前子账号密钥的主账号 AppID；同一 Probe 从稳定 `auth` 前进为 `protocol_error`。随后新增安全 Probe 错误包络和 mock 回归测试，禁止输出 provider message、URL、文本或音频 | 已确认 AppID 归属错误是鉴权根因；30/30 自动化测试通过，等待下一次单次授权以定位新协议错误的 provider stage/code |
 | 2026-08-17 | 权限变更后第三次受控 Probe | 用户报告完成 TTS/ASR 权限调整；同一最小 Probe 仍返回 `auth`。使用当前本机配置在内存中把实现与官方 SDK 算法逐字段差分，canonical string 与签名完全一致，且未输出参数、签名或凭据 | 停止真实重试；本地签名已排除，下一步只核对 AppID、密钥、服务开通与策略关联是否落在同一主账号/子用户 |
 | 2026-08-17 | 修正后第二次受控 Probe | 使用同一最小复现回路验证官方 SDK 对齐后的签名；TTS 仍稳定返回 `auth`，无音频、无 ASR 调用。复核腾讯官方 CAM 指引确认可用预设策略 `QcloudTTSFullAccess` | 签名修正不是唯一根因；停止真实重试，转为核对子账号 TTS 权限和 AppID/密钥主账号归属 |
 | 2026-08-17 | 首次受控真实 Probe 与签名差分 | 新密钥与本机安全门通过；TTS 握手稳定返回 `auth`。对照腾讯官方 TTS/ASR Python SDK，新增签名 known-vector 回归断言，补齐 TTS `ModelType=1`，并把两类签名有效期对齐为官方的 24 小时 | 真实验收仍未通过；29/29 自动化测试通过，等待新的单次真实 Probe 授权后区分签名修正与 CAM/AppID 配置问题 |
