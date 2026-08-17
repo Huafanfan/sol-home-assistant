@@ -9,7 +9,7 @@
 - 产品边界：单房间、单已授权用户、无现实世界副作用的 MVP。
 - 中心主机：现有 Apple Silicon Mac mini；容器运行时为 OrbStack Docker Engine 与 Docker Compose。
 - 语音链路：本地唤醒/VAD → 腾讯云实时 ASR/TTS → Gateway → 可替换的文本深度推理适配器。
-- 当前阶段：架构、提供方和部署基线已接受；VOICE-001 的确定性会话编排核心已实现，VOICE-002 文本适配器已完成真实探测，VOICE-003 腾讯云实时语音适配器规格已接受但尚未实现；真实语音链路仍未验证。
+- 当前阶段：架构、提供方和部署基线已接受；VOICE-001 会话核心和 VOICE-003 腾讯云实时语音适配器已实现并通过自动化测试，VOICE-002 文本适配器已完成真实探测；腾讯云语音与本机音频的真实链路仍未验证。
 
 当前实现入口是 [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md)。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
 
@@ -58,4 +58,4 @@
 | --- | --- | --- |
 | [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | 由 VOICE-003 接入腾讯云语音适配器；后续由独立规格接入 macOS 音频 |
 | [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |
-| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `accepted` | 先完成离线实现与 mock 测试；真实 Probe 等待安全新密钥、计费确认和明确调用授权 |
+| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `implemented` | 自动化与默认无网络 Probe 已通过；真实 Probe 等待安全新密钥、计费确认和明确调用授权 |
