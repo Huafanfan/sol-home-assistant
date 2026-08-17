@@ -167,14 +167,15 @@ CONFIG_VALIDATED ─► SIGNING_SELF_CHECK ─► MOCK_CONTRACTS_OK
 | 实现路径 | `packages/tencent-voice/src/`（安全配置、固定官方主机签名、WebSocket 抽象、实时 ASR/TTS 适配器与错误分类）、`apps/voice-gateway/src/config/tencent-voice.ts`（Gateway 组合）、`scripts/probe-tencent-voice.ts`（默认离线、显式计费确认门）与 `test/tencent-voice.test.ts` |
 | 文档/ADR 更新 | 本规格、`docs/START-HERE.md`、`docs/features/README.md`、VOICE-001 状态表述、`README.md` 与 `.env.example`；不新增 ADR |
 | 静态检查 | `npm run typecheck` 通过（2026-08-17） |
-| 自动化测试 | `npm run check` 通过，30/30；其中 12 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界、Probe 默认无网络/全 mock 路径，以及失败时只暴露 stage、安全错误码和数字 providerCode 的诊断包络 |
+| 自动化测试 | `npm run check` 通过，31/31；其中 13 项覆盖腾讯云配置/签名、ASR/TTS 协议、节流、错误、超时、取消、Gateway 边界、Probe 默认无网络、固定时钟指标、成功/取消连接上限、取消后零交付、全 mock 路径，以及失败时只暴露 stage、安全错误码和数字 providerCode 的诊断包络 |
 | 真实运行/人工验收 | 2026-08-17 在新密钥安全门、离线签名自检通过后执行六次各自获得授权的受控 Probe。前三次定位并修正 TTS 鉴权配置；第四、第五次把问题最小化到 ASR `6001` 地域/网络出口边界。为 `tts.cloud.tencent.com` 与 `asr.cloud.tencent.com` 添加 Surge 精确 `DIRECT` 规则后，第六次单次 Probe 以退出码 `0` 完成；按实现的成功条件，这证明真实 TTS 返回非空 PCM，随后 ASR 返回非空最终转写。全程未输出或持久化凭据、正文、转写或音频 |
-| 已知限制或未验证假设 | Surge 精确直连已消除 ASR `6001`。第六次 Probe 的外层脱敏提取器未保留 pretty-printed 成功报告中的计数值，因此本次只有功能成功证据，没有可引用的延迟/音频秒数；独立真实取消和控制台用量也仍未验收。后续应先完善安全成功报告的单行提取与计时字段，再获得新的单次授权；本机音频、VAD/AEC/唤醒词不在本功能范围 |
+| 已知限制或未验证假设 | Surge 精确直连已消除 ASR `6001`。Probe 现已输出单行安全成功报告，记录 TTS 首包/完成、ASR 首部分/最终延迟、音频用量、连接次数与零重试，并以 `--confirm-billable` + `--confirm-cancellation` 双重门控最多增加 TTS/ASR 各一次独立取消连接。真实指标、真实取消和控制台用量仍未验收，且本地取消不能证明服务端停止生成/计费；本机音频、VAD/AEC/唤醒词不在本功能范围 |
 
 ## 10. 复核记录
 
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
+| 2026-08-17 | 最终验收探测能力补齐 | 复核 START-HERE、架构、ADR-0002、腾讯云 Provider 文档和既有 accepted 规格；在 Probe 内加入独立单调时钟、单行安全指标、连接/重试计数和 `--confirm-cancellation` 第二授权门。mock 证明成功与取消路径每种能力各最多一次连接、所有 socket 关闭且取消后交付为零；CLI 仅带取消开关仍保持离线 | 不改变架构或 Provider 决策，无需新 ADR；`npm run check` 31/31，离线 CLI 安全门通过。代码已具备最终真实验收条件，但尚未获得新增取消连接的真实调用授权，因此保持 `implemented` |
 | 2026-08-17 | Surge 直连后的第六次受控 Probe | 用户确认在 Surge 新增并启用 `tts.cloud.tencent.com`、`asr.cloud.tencent.com` 两条精确 `DOMAIN → DIRECT` 规则；随后只执行一次真实 Probe 且未重试。Probe 退出码为 `0`；复核实现确认失败均设置非零退出码，且成功返回前必须完成非空 TTS PCM 和非空 ASR 最终转写 | `6001` 已消除，真实 TTS→ASR 功能链路打通。外层安全提取器未保留 pretty-printed 成功指标，故仍待延迟/音频指标、独立取消与控制台用量证据，不将规格标记为 `verified` |
 | 2026-08-17 | 第五次受控 Probe 与 ASR 错误最小化 | 使用新增安全诊断包络执行一次且未重试；返回 `stage=asr`、`providerCode=6001`。复核腾讯云实时语音识别官方错误码说明，并只读检查当前 shell 代理是否启用，不输出代理地址或凭据 | 鉴权与真实 TTS 已通过；ASR 被国内站账号经境外代理调用的地域边界阻塞。当前 `HTTP_PROXY`/`HTTPS_PROXY` 指向本机回环代理；改为中国大陆直连后再申请一次复测授权 |
 | 2026-08-17 | 修正主账号 AppID 后第四次受控 Probe | 用户将 `.env` AppID 修正为签发当前子账号密钥的主账号 AppID；同一 Probe 从稳定 `auth` 前进为 `protocol_error`。随后新增安全 Probe 错误包络和 mock 回归测试，禁止输出 provider message、URL、文本或音频 | 已确认 AppID 归属错误是鉴权根因；30/30 自动化测试通过，等待下一次单次授权以定位新协议错误的 provider stage/code |

@@ -530,6 +530,7 @@ test("offline Probe validates signing without creating a WebSocket or leaking da
   };
   const report = await runTencentVoiceProbe({
     environment: environment(),
+    confirmCancellation: true,
     asrDependencies: {
       webSocketFactory: forbiddenFactory,
       now: () => 1_700_000_000_000,
@@ -565,9 +566,11 @@ test("offline Probe validates signing without creating a WebSocket or leaking da
 test("controlled Probe path is bounded and report-only under mocked providers", async () => {
   const asrMock = asrFactory({ finalText: "固定结果" });
   const ttsMock = ttsFactory();
+  const metricTimes = [100, 125, 160, 200, 260, 300];
   const report = await runTencentVoiceProbe({
     environment: environment(),
     confirmBillable: true,
+    monotonicNow: () => metricTimes.shift() ?? 999,
     asrDependencies: {
       webSocketFactory: asrMock.factory,
       sleep: async () => undefined,
@@ -585,12 +588,83 @@ test("controlled Probe path is bounded and report-only under mocked providers", 
   assert.equal(report.networkAttempted, true);
   assert.equal(report.ttsAudioChunkCount, 2);
   assert.equal(report.ttsAudioByteCount, 5);
+  assert.equal(report.ttsAudioDurationMs, 1);
+  assert.equal(report.ttsFirstAudioLatencyMs, 25);
+  assert.equal(report.ttsCompletionLatencyMs, 60);
+  assert.equal(report.asrFirstPartialLatencyMs, 60);
+  assert.equal(report.asrFinalLatencyMs, 100);
   assert.equal(report.asrFinalPresent, true);
+  assert.equal(report.asrFinalCharacterCount, 4);
+  assert.equal(report.ttsConnectionAttemptCount, 1);
+  assert.equal(report.asrConnectionAttemptCount, 1);
+  assert.equal(report.retryCount, 0);
+  assert.equal(report.cancellationAttempted, false);
+  assert.equal(metricTimes.length, 0);
   assert.equal(asrMock.sockets.length, 1);
   assert.equal(ttsMock.sockets.length, 1);
   const serialized = JSON.stringify(report);
-  assert.equal(serialized.includes("固定结果"), false);
-  assert.equal(serialized.includes("TEST_SECRET"), false);
+  for (const unsafe of [
+    "固定结果",
+    "你好，这是语音测试。",
+    "TEST_SECRET",
+    "Signature",
+    "asr.cloud.tencent.com",
+    "tts.cloud.tencent.com",
+    "[1,2,3]",
+  ]) {
+    assert.equal(serialized.includes(unsafe), false);
+  }
+});
+
+test("controlled Probe runs fresh cancellation connections only behind both gates", async () => {
+  const asrMock = asrFactory({ finalText: "固定结果" });
+  const ttsMock = ttsFactory();
+  const metricTimes = [100, 125, 160, 200, 260, 300];
+  const report = await runTencentVoiceProbe({
+    environment: environment(),
+    confirmBillable: true,
+    confirmCancellation: true,
+    monotonicNow: () => metricTimes.shift() ?? 999,
+    asrDependencies: {
+      webSocketFactory: asrMock.factory,
+      sleep: async () => undefined,
+      now: () => 1_700_000_000_000,
+      nonce: () => 11,
+      createId: () => "asr-cancel-mock",
+    },
+    ttsDependencies: {
+      webSocketFactory: ttsMock.factory,
+      now: () => 1_700_000_000_000,
+      createId: () => "tts-cancel-mock",
+    },
+  });
+
+  assert.equal(report.cancellationAttempted, true);
+  assert.equal(report.ttsLocalCancellationObserved, true);
+  assert.equal(report.ttsPostCancellationAudioChunkCount, 0);
+  assert.equal(report.asrLocalCancellationObserved, true);
+  assert.equal(report.asrPostCancellationPartialCount, 0);
+  assert.equal(report.asrPostCancellationFinalCount, 0);
+  assert.equal(report.ttsConnectionAttemptCount, 2);
+  assert.equal(report.asrConnectionAttemptCount, 2);
+  assert.equal(report.retryCount, 0);
+  assert.equal(ttsMock.sockets.length, 2);
+  assert.equal(asrMock.sockets.length, 2);
+  assert.equal(ttsMock.sockets.every((socket) => socket.closed), true);
+  assert.equal(asrMock.sockets.every((socket) => socket.closed), true);
+
+  const serialized = JSON.stringify(report);
+  for (const unsafe of [
+    "固定结果",
+    "你好，这是语音测试。",
+    "TEST_SECRET",
+    "Signature",
+    "asr.cloud.tencent.com",
+    "tts.cloud.tencent.com",
+    "[1,2,3]",
+  ]) {
+    assert.equal(serialized.includes(unsafe), false);
+  }
 });
 
 test("controlled Probe failures identify only the safe provider stage", async () => {
