@@ -22,9 +22,9 @@
 
 ### Voice Satellite
 
-负责本地唤醒、VAD、音频采集/播放、物理静音按钮和本地状态灯。未唤醒音频不离开设备。它只与家庭局域网中的 Gateway 连接，不应承载腾讯云、文本推理提供方或数据库凭据，也不应拥有跨房间权限。
+负责本地激活、唤醒/VAD、音频采集/播放、物理静音按钮和本地状态。未激活音频不离开设备。它只与 Gateway 连接，不应承载腾讯云、文本推理提供方或数据库凭据，也不应拥有跨房间权限。
 
-首版在开发机上实现一个等价的“单房间卫星”；实际硬件需通过真实房间的唤醒、噪声和回声测试后再选型。
+首版按 [ADR-0005](decisions/ADR-0005-native-macos-voice-satellite.md) 在开发机上以 Swift/AVFoundation 实现原生 macOS 宿主进程。VOICE-004 先通过版本化的同机进程协议完成手动激活、麦克风采集、扬声器播放和手动打断；唤醒、自动 VAD、AEC/降噪和认证 LAN Satellite 协议由后续规格实现。实际硬件需通过真实房间的唤醒、噪声和回声测试后再选型。
 
 ### Voice Gateway
 
@@ -68,7 +68,7 @@ Gateway 维护对外连接、请求超时与取消：用户打断时必须停止
 ~~~text
 Mac mini（macOS，持续运行）
 ├── 宿主机进程
-│   └── 首台 Voice Satellite：唤醒、VAD、音频采集/播放、静音与状态
+│   └── 首台 Voice Satellite：Swift/AVFoundation 音频、手动控制；后续唤醒/VAD/AEC
 └── OrbStack Docker Engine
     └── Docker Compose（服务出现后）
         ├── Voice Gateway
@@ -76,7 +76,7 @@ Mac mini（macOS，持续运行）
         └── 未来的低风险基础服务
 ~~~
 
-首版中心主机是现有的 Apple Silicon Mac mini。OrbStack 只负责 Linux 容器运行时；它不是语音硬件抽象层。因此 Satellite 的音频设备、唤醒词、VAD、打断播放和物理静音先保留在 macOS 宿主机，而 Gateway、Memory 与供应商适配逻辑从首次实现起按可容器化服务设计。
+首版中心主机是现有的 Apple Silicon Mac mini。OrbStack 只负责 Linux 容器运行时；它不是语音硬件抽象层。因此 Satellite 的音频设备、权限、手动打断以及后续唤醒/VAD/AEC 保留在 Swift/AVFoundation macOS 宿主进程，而 Gateway、Memory 与供应商适配逻辑从首次实现起按可容器化服务设计。VOICE-004 只使用同机进程协议，不提前开放家庭 LAN 监听端口。
 
 Dockerfile 与 compose.yaml 是跨主机契约，而非 macOS 专属实现：当前镜像首先支持 linux/arm64；迁移到 N100/Linux 前，应验证 linux/amd64 或发布双架构镜像。服务之间使用 Compose 网络和显式端口映射，不依赖 host network、Docker Desktop 特性或 macOS 路径。Voice Satellite 只知道 Gateway 的认证 LAN 地址，不需要、也不得接触 Docker API。
 

@@ -10,9 +10,9 @@
 
 | 位置 | 负责内容 | 不负责内容 |
 | --- | --- | --- |
-| macOS 宿主机 | 首台 Voice Satellite 的本地音频、唤醒、VAD、静音、状态提示 | 腾讯云凭据、文本推理凭据、数据库访问 |
+| macOS 宿主机 | Swift/AVFoundation 首台 Voice Satellite 的权限、本地音频、手动控制，以及后续唤醒/VAD/AEC | 腾讯云凭据、文本推理凭据、数据库访问 |
 | OrbStack / Docker Compose | Voice Gateway、Memory、数据库和未来基础服务 | 直接控制卫星麦克风或扬声器 |
-| 家庭 LAN | 已认证 Satellite 到 Gateway 的连接 | Docker 管理、数据库直连、未认证访问 |
+| 未来家庭 LAN | 后续远程 Satellite 到 Gateway 的已认证连接；VOICE-004 不开放监听端口 | Docker 管理、数据库直连、未认证访问 |
 
 ## 交付与迁移标准
 

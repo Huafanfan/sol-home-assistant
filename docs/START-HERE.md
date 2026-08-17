@@ -9,9 +9,9 @@
 - 产品边界：单房间、单已授权用户、无现实世界副作用的 MVP。
 - 中心主机：现有 Apple Silicon Mac mini；容器运行时为 OrbStack Docker Engine 与 Docker Compose。
 - 语音链路：本地唤醒/VAD → 腾讯云实时 ASR/TTS → Gateway → 可替换的文本深度推理适配器。
-- 当前阶段：架构、提供方和部署基线已接受；VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；下一阶段是为本机麦克风、扬声器、VAD/AEC 与唤醒边界建立独立规格。
+- 当前阶段：VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；VOICE-004 已接受 Swift/AVFoundation macOS Voice Satellite 的手动激活本机音频闭环，等待下一 session 实现。唤醒/VAD/AEC 继续由后续 VOICE-005 负责。
 
-当前实现入口是 [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md)。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
+下一实现入口是 [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md)。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
 
 ## 按工作类型阅读
 
@@ -20,7 +20,7 @@
 | 任意 T1/T2/T3 功能 | 本文档、相关 `docs/features/` 规格、[`architecture.md`](architecture.md)、关联 ADR |
 | 语音会话、打断、唤醒、ASR/TTS | [`architecture.md`](architecture.md)、[`mvp-plan.md`](mvp-plan.md)、[ADR-0002](decisions/ADR-0002-tencent-voice-and-text-reasoner.md)、[`providers/tencent-cloud.md`](providers/tencent-cloud.md) |
 | 会话、记忆、数据保留或审计 | [`architecture.md`](architecture.md)、[`mvp-plan.md`](mvp-plan.md)、[ADR-0001](decisions/ADR-0001-first-mvp-boundary.md) 与相关功能规格 |
-| Mac mini、OrbStack、Compose、备份或迁移 | [`deployment/macos-orbstack.md`](deployment/macos-orbstack.md)、[ADR-0003](decisions/ADR-0003-mac-mini-orbstack-deployment.md)、[`architecture.md`](architecture.md) |
+| Mac mini、原生音频、OrbStack、Compose、备份或迁移 | [`deployment/macos-orbstack.md`](deployment/macos-orbstack.md)、[ADR-0003](decisions/ADR-0003-mac-mini-orbstack-deployment.md)、[ADR-0005](decisions/ADR-0005-native-macos-voice-satellite.md)、[`architecture.md`](architecture.md) |
 | 开发流程或文档规范 | [`../AGENTS.md`](../AGENTS.md)、[ADR-0004](decisions/ADR-0004-documentation-driven-development.md)、[`templates/feature-spec.md`](templates/feature-spec.md) |
 
 ## 文档事实来源
@@ -51,11 +51,13 @@
 - [ADR-0002：腾讯云语音层与文本深度推理适配器](decisions/ADR-0002-tencent-voice-and-text-reasoner.md)
 - [ADR-0003：Mac mini 和 OrbStack 容器化中心](decisions/ADR-0003-mac-mini-orbstack-deployment.md)
 - [ADR-0004：文档驱动的规格先行开发](decisions/ADR-0004-documentation-driven-development.md)
+- [ADR-0005：原生 macOS Voice Satellite](decisions/ADR-0005-native-macos-voice-satellite.md)
 
 ## 当前功能规格
 
 | 规格 | 状态 | 下一步 |
 | --- | --- | --- |
-| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | VOICE-003 已接入腾讯云语音适配器；后续由独立规格接入 macOS 音频 |
+| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | VOICE-002/003 已接入；由 VOICE-004 完成真实本机音频与端到端验收 |
 | [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |
-| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `verified` | 31/31 自动化、真实 TTS→ASR 指标、独立取消和控制台用量复核均已通过；下一步转入本机音频规格 |
+| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `verified` | 31/31 自动化、真实 TTS→ASR 指标、独立取消和控制台用量复核均已通过 |
+| [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md) | `accepted` | 下一 session 实现 Swift/AVFoundation 手动激活、真实麦克风/扬声器和手动打断 |
