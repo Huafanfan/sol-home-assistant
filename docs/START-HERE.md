@@ -58,4 +58,4 @@
 | --- | --- | --- |
 | [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | 由 VOICE-003 接入腾讯云语音适配器；后续由独立规格接入 macOS 音频 |
 | [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |
-| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `implemented` | 自动化已通过；签名对齐官方 SDK 后仍鉴权失败，下一步核对子账号 `QcloudTTSFullAccess` 与 AppID 归属 |
+| [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `implemented` | 自动化已通过；官方 SDK 签名差分完全一致、关联 TTS 权限后仍鉴权失败，下一步核对 AppID、密钥、服务开通与策略是否属于同一主账号/子用户 |
