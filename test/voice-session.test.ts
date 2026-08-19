@@ -224,6 +224,73 @@ test("metrics do not serialize transcript, response text, or audio bytes", async
   assert.equal(serializedMetrics.includes("7,8,9"), false);
 });
 
+test("continues reading the reasoner stream while earlier speech plays", async () => {
+  const reasoner = new PullSensitiveReasoner();
+  const playback = new DelayedPlayback(20);
+  const session = new VoiceSession(
+    defaultDependencies({
+      asr: new ScriptedAsr("needs reasoning"),
+      router: new StaticRouter({ kind: "reason" }),
+      reasoner,
+      tts: new StaticTts([Uint8Array.of(1, 2)]),
+      playback,
+    }),
+  );
+
+  const completion = session.begin();
+  session.pushAudio(Uint8Array.of(1, 2));
+  session.endAudio();
+
+  assert.deepEqual(await completion, { kind: "completed" });
+  assert.equal(reasoner.segmentCount, 2);
+  assert.equal(playback.playedChunkCount, 2);
+});
+
+test("continues reading the TTS stream while earlier audio plays", async () => {
+  const tts = new PullSensitiveTts();
+  const playback = new DelayedPlayback(20);
+  const session = new VoiceSession(
+    defaultDependencies({
+      asr: new ScriptedAsr("direct response"),
+      router: new StaticRouter({ kind: "direct", text: "answer" }),
+      tts,
+      playback,
+    }),
+  );
+
+  const completion = session.begin();
+  session.pushAudio(Uint8Array.of(1, 2));
+  session.endAudio();
+
+  assert.deepEqual(await completion, { kind: "completed" });
+  assert.equal(tts.chunkCount, 2);
+  assert.equal(playback.playedChunkCount, 2);
+});
+
+test("plays the first TTS chunk immediately and batches later PCM", async () => {
+  const playback = new RecordingPlayback();
+  const audioChunks = Array.from(
+    { length: 10 },
+    (_, index) => new Uint8Array(3_200).fill(index),
+  );
+  const session = new VoiceSession(
+    defaultDependencies({
+      asr: new ScriptedAsr("direct response"),
+      router: new StaticRouter({ kind: "direct", text: "answer" }),
+      tts: new StaticTts(audioChunks),
+      playback,
+    }),
+  );
+
+  const completion = session.begin();
+  session.pushAudio(Uint8Array.of(1, 2));
+  session.endAudio();
+
+  assert.deepEqual(await completion, { kind: "completed" });
+  assert.equal(playback.playedChunkCount, 2);
+  assert.equal(playback.playedByteCount, 32_000);
+});
+
 function defaultDependencies(
   overrides: Partial<VoiceSessionDependencies> = {},
 ): VoiceSessionDependencies {
@@ -339,5 +406,79 @@ class CountingRouter implements ResponseRouter {
   ): Promise<{ readonly kind: "direct"; readonly text: string }> {
     this.calls += 1;
     return { kind: "direct", text: "unreachable" };
+  }
+}
+
+class PullSensitiveReasoner implements ReasonerAdapter {
+  public segmentCount = 0;
+
+  public async *stream(
+    _request: ReasonerRequest,
+    _options: { readonly signal: AbortSignal },
+  ): AsyncIterable<string> {
+    let readStalled = false;
+    const timer = setTimeout(() => {
+      readStalled = true;
+    }, 5);
+    try {
+      this.segmentCount += 1;
+      yield "first segment";
+      if (readStalled) {
+        throw new Error("reasoner stream was not consumed while speech played");
+      }
+      this.segmentCount += 1;
+      yield "second segment";
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+class PullSensitiveTts implements TtsAdapter {
+  public chunkCount = 0;
+
+  public async *synthesize(
+    _text: string,
+    _options: { readonly signal: AbortSignal },
+  ): AsyncIterable<Uint8Array> {
+    let readStalled = false;
+    const timer = setTimeout(() => {
+      readStalled = true;
+    }, 5);
+    try {
+      this.chunkCount += 1;
+      yield Uint8Array.of(1, 2);
+      if (readStalled) {
+        throw new Error("TTS stream was not consumed while audio played");
+      }
+      this.chunkCount += 1;
+      yield Uint8Array.of(3, 4);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+class DelayedPlayback implements PlaybackAdapter {
+  public playedChunkCount = 0;
+
+  public constructor(private readonly delayMs: number) {}
+
+  public async play(
+    _audio: Uint8Array,
+    options: { readonly signal: AbortSignal },
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, this.delayMs);
+      options.signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          reject(new Error("cancelled"));
+        },
+        { once: true },
+      );
+    });
+    this.playedChunkCount += 1;
   }
 }

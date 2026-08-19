@@ -9,9 +9,9 @@
 - 产品边界：单房间、单已授权用户、无现实世界副作用的 MVP。
 - 中心主机：现有 Apple Silicon Mac mini；容器运行时为 OrbStack Docker Engine 与 Docker Compose。
 - 语音链路：本地唤醒/VAD → 腾讯云实时 ASR/TTS → Gateway → 可替换的文本深度推理适配器。
-- 当前阶段：VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；VOICE-004 已接受 Swift/AVFoundation macOS Voice Satellite 的手动激活本机音频闭环，等待下一 session 实现。唤醒/VAD/AEC 继续由后续 VOICE-005 负责。
+- 当前阶段：VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；VOICE-004 已实现 Swift/AVFoundation macOS Voice Satellite、同机二进制协议和手动轮次编排，离线测试、真实子进程协议及真实麦克风→云端→扬声器中文单轮均已通过。手动打断、设备切换和控制台用量仍待验收，唤醒/VAD/AEC 继续由后续 VOICE-005 负责。
 
-下一实现入口是 [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md)。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
+下一验收入口是 [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md) 的真实 macOS 硬件清单；完成前不把它标记为 `verified`。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
 
 ## 按工作类型阅读
 
@@ -57,7 +57,7 @@
 
 | 规格 | 状态 | 下一步 |
 | --- | --- | --- |
-| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | VOICE-002/003 已接入；由 VOICE-004 完成真实本机音频与端到端验收 |
+| [VOICE-001：开发机语音会话编排核心](features/VOICE-001-development-voice-session-core.md) | `implemented` | VOICE-002/003/004 已离线接入；随 VOICE-004 完成真实本机音频与端到端验收 |
 | [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |
 | [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `verified` | 31/31 自动化、真实 TTS→ASR 指标、独立取消和控制台用量复核均已通过 |
-| [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md) | `accepted` | 下一 session 实现 Swift/AVFoundation 手动激活、真实麦克风/扬声器和手动打断 |
+| [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md) | `implemented` | 离线、真实子进程和真实中文单轮通过；下一步验收手动打断、设备切换与控制台零调用/用量 |

@@ -18,6 +18,7 @@ recordings/
 node_modules/
 dist/
 coverage/
+.build/
 
 # OS and editor files
 .DS_Store

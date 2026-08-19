@@ -19,12 +19,12 @@ Sol 不假定某一个模型或供应商可以安全地同时处理音频、推�
 | 语音会话核心 | 已实现 | 确定性的会话状态机、分阶段超时、取消传播、脱敏指标和本地诊断演示。 |
 | 文本深度推理适配器 | 已验证 | OpenAI-compatible 的纯文本适配器，包含模型探测、流式输出、取消、错误分类与本机私有配置。 |
 | 腾讯云实时 ASR/TTS 适配器 | 已验证 | 自动化、真实 TTS→ASR 指标、独立取消和控制台用量复核均已通过。 |
-| macOS 麦克风与扬声器 | 规格已接受 | VOICE-004 将以 Swift/AVFoundation 实现手动激活、真实单轮对话和手动打断。 |
-| 唤醒词、VAD、AEC 与免手连续对话 | 计划中 | VOICE-004 完成后由 VOICE-005 独立设计和房间实测。 |
+| macOS 麦克风与扬声器 | 已实现，单轮已实测 | Swift/AVFoundation 宿主、同机二进制协议和真实麦克风→云端→扬声器中文单轮均已通过；手动打断和设备切换仍待实测。 |
+| 唤醒词、VAD、AEC 与免手连续对话 | 计划中 | VOICE-004 真实硬件验收后由 VOICE-005 独立设计和房间实测。 |
 | 长期记忆 | 计划中 | 保留策略、数据模型、删除语义和审计边界已经先行定义。 |
 | 智能家居写操作、联网搜索 | 不在 MVP 范围内 | 这些能力必须单独定义权限、确认、成本和审计规则。 |
 
-一句话概括：文本推理与腾讯云实时语音已经完成真实验收；下一步是按已接受的 VOICE-004 规格把 Mac mini 的真实麦克风和扬声器接入端到端会话。
+一句话概括：文本推理与腾讯云实时语音已经完成真实验收，VOICE-004 也已完成 Mac mini 真实麦克风、云端推理和扬声器的中文单轮；下一步是验收手动打断、设备变化，再进入 VOICE-005。
 
 ## 架构一览
 
@@ -61,6 +61,8 @@ npm run demo
 
 `npm run demo` 是刻意保持本地、确定性的开发诊断：它模拟 ASR、文本推理、TTS 与播放，用来验证会话生命周期；它不会访问麦克风、腾讯云或真实模型提供方。
 
+在安装 Xcode/Swift 的 macOS 上，还可以运行 `npm run check:voice-satellite`。它会编译并测试原生 Satellite，并启动真实 Swift 子进程完成无麦克风、无云调用的协议冒烟；它不会请求麦克风权限。
+
 ### 可选：验证自己的文本推理提供方
 
 如果你有 OpenAI-compatible 的文本 endpoint，可从 [`.env.example`](.env.example) 创建私有 `.env`，填入 `TEXT_REASONER_*` 配置后运行：
@@ -83,7 +85,7 @@ npm run probe:tencent-voice
 
 ## 路线图
 
-1. 实现 VOICE-004：Mac mini 的手动激活麦克风/扬声器单轮闭环与手动打断。
+1. 完成 VOICE-004 真实验收：Mac mini 的麦克风/扬声器、云端单轮闭环、设备变化与手动打断。
 2. 实现 VOICE-005：本地唤醒、自动 VAD、AEC/降噪与免手连续对话。
 3. 实现受策略约束的会话与记忆服务。
 4. 在常驻 Mac mini 上验证房间声学、恢复能力、成本和延迟。
@@ -106,6 +108,7 @@ npm run probe:tencent-voice
 
 ```text
 apps/voice-gateway/       Gateway 的组合入口和提供方配置
+apps/voice-satellite-macos/ Swift/AVFoundation 本机音频宿主与测试
 packages/voice-session/   会话状态机与安全的适配器契约
 packages/text-reasoner/   OpenAI-compatible 文本适配器与探测支持
 packages/tencent-voice/   腾讯云实时 ASR/TTS 签名、协议适配器与安全探测

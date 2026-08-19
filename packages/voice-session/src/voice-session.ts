@@ -1,4 +1,5 @@
 import { SessionAudioInput } from "./audio-input.js";
+import { BoundedAsyncQueue } from "./bounded-async-queue.js";
 import type {
   FailureCode,
   MetricsSink,
@@ -27,6 +28,7 @@ const defaultTimeouts: SessionTimeouts = {
   ttsMs: 15_000,
   playbackMs: 15_000,
 };
+const maximumPlaybackBatchBytes = 64 * 1_024;
 
 const allowedTransitions: Readonly<Record<SessionState, readonly SessionState[]>> = {
   IDLE: ["AWAKE"],
@@ -226,23 +228,30 @@ export class VoiceSession {
     this.#stage = "reasoner";
     this.#recordAdapter("adapter_started", "reasoner");
 
+    const scope = createChildAbortScope(signal);
+    const segments = new BoundedAsyncQueue<string>(16);
+    const producer = this.#produceReasonerSegments(
+      request,
+      scope,
+      segments,
+    );
+    void producer.catch(() => undefined);
     let responseCount = 0;
-    for await (const text of abortable(
-      this.dependencies.reasoner.stream(request, { signal }),
-      signal,
-      this.#timeouts.reasonerMs,
-      () => this.#controller?.abort(),
-    )) {
-      assertNotAborted(signal);
-      if (text.trim().length === 0) {
-        continue;
+    try {
+      for await (const text of segments) {
+        assertNotAborted(signal);
+        responseCount += 1;
+        await this.#speak(text, signal);
+        assertNotAborted(signal);
+        this.#transition("DEEP_REASONING");
+        this.#stage = "reasoner";
       }
-
-      responseCount += 1;
-      await this.#speak(text, signal);
-      assertNotAborted(signal);
-      this.#transition("DEEP_REASONING");
-      this.#stage = "reasoner";
+      await producer;
+    } finally {
+      scope.abort();
+      segments.close();
+      await producer.catch(() => undefined);
+      scope.dispose();
     }
 
     if (responseCount === 0) {
@@ -255,34 +264,66 @@ export class VoiceSession {
     this.#recordAdapter("adapter_completed", "reasoner");
   }
 
+  async #produceReasonerSegments(
+    request: ReasonerRequest,
+    scope: ChildAbortScope,
+    segments: BoundedAsyncQueue<string>,
+  ): Promise<void> {
+    try {
+      for await (const text of abortable(
+        this.dependencies.reasoner.stream(request, { signal: scope.signal }),
+        scope.signal,
+        this.#timeouts.reasonerMs,
+        scope.abort,
+      )) {
+        assertNotAborted(scope.signal);
+        if (text.trim().length === 0) {
+          continue;
+        }
+        await segments.push(text, scope.signal);
+      }
+      segments.close();
+    } catch (error: unknown) {
+      segments.fail(error);
+      throw error;
+    }
+  }
+
   async #speak(text: string, signal: AbortSignal): Promise<void> {
     this.#transition("TTS_STREAMING");
     this.#stage = "tts";
     this.#recordAdapter("adapter_started", "tts");
 
+    const scope = createChildAbortScope(signal);
+    const audio = new BoundedAsyncQueue<Uint8Array>(4);
+    const producer = this.#produceAudioChunks(text, scope, audio);
+    void producer.catch(() => undefined);
     let chunkCount = 0;
-    for await (const audioChunk of abortable(
-      this.dependencies.tts.synthesize(text, { signal }),
-      signal,
-      this.#timeouts.ttsMs,
-      () => this.#controller?.abort(),
-    )) {
-      assertNotAborted(signal);
-      chunkCount += 1;
+    try {
+      for await (const audioChunk of audio) {
+        assertNotAborted(signal);
+        chunkCount += 1;
 
-      this.#transition("SPEAKING");
-      this.#stage = "playback";
-      this.#recordAdapter("adapter_started", "playback");
-      await this.#awaitStage(
-        this.dependencies.playback.play(audioChunk, { signal }),
-        this.#timeouts.playbackMs,
-        signal,
-      );
-      assertNotAborted(signal);
-      this.#recordAdapter("adapter_completed", "playback");
+        this.#transition("SPEAKING");
+        this.#stage = "playback";
+        this.#recordAdapter("adapter_started", "playback");
+        await this.#awaitStage(
+          this.dependencies.playback.play(audioChunk, { signal }),
+          this.#timeouts.playbackMs,
+          signal,
+        );
+        assertNotAborted(signal);
+        this.#recordAdapter("adapter_completed", "playback");
 
-      this.#transition("TTS_STREAMING");
-      this.#stage = "tts";
+        this.#transition("TTS_STREAMING");
+        this.#stage = "tts";
+      }
+      await producer;
+    } finally {
+      scope.abort();
+      audio.close();
+      await producer.catch(() => undefined);
+      scope.dispose();
     }
 
     if (chunkCount === 0) {
@@ -290,6 +331,64 @@ export class VoiceSession {
     }
 
     this.#recordAdapter("adapter_completed", "tts");
+  }
+
+  async #produceAudioChunks(
+    text: string,
+    scope: ChildAbortScope,
+    audio: BoundedAsyncQueue<Uint8Array>,
+  ): Promise<void> {
+    let isFirstChunk = true;
+    let pending: Uint8Array[] = [];
+    let pendingBytes = 0;
+    const flushPending = async (): Promise<void> => {
+      if (pendingBytes === 0) {
+        return;
+      }
+      await audio.push(concatenateAudio(pending, pendingBytes), scope.signal);
+      pending = [];
+      pendingBytes = 0;
+    };
+
+    try {
+      for await (const chunk of abortable(
+        this.dependencies.tts.synthesize(text, { signal: scope.signal }),
+        scope.signal,
+        this.#timeouts.ttsMs,
+        scope.abort,
+      )) {
+        assertNotAborted(scope.signal);
+        for (let offset = 0; offset < chunk.byteLength; ) {
+          const end = Math.min(
+            offset + maximumPlaybackBatchBytes,
+            chunk.byteLength,
+          );
+          const slice = chunk.slice(offset, end);
+          offset = end;
+          if (slice.byteLength === 0) {
+            continue;
+          }
+          if (isFirstChunk) {
+            isFirstChunk = false;
+            await audio.push(slice, scope.signal);
+            continue;
+          }
+          if (pendingBytes + slice.byteLength > maximumPlaybackBatchBytes) {
+            await flushPending();
+          }
+          pending.push(slice);
+          pendingBytes += slice.byteLength;
+          if (pendingBytes === maximumPlaybackBatchBytes) {
+            await flushPending();
+          }
+        }
+      }
+      await flushPending();
+      audio.close();
+    } catch (error: unknown) {
+      audio.fail(error);
+      throw error;
+    }
   }
 
   #reasonerRequest(
@@ -358,6 +457,40 @@ export class VoiceSession {
       this.#transition("IDLE");
     }
   }
+}
+
+function concatenateAudio(
+  chunks: readonly Uint8Array[],
+  byteLength: number,
+): Uint8Array {
+  const combined = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return combined;
+}
+
+interface ChildAbortScope {
+  readonly signal: AbortSignal;
+  readonly abort: () => void;
+  readonly dispose: () => void;
+}
+
+function createChildAbortScope(parentSignal: AbortSignal): ChildAbortScope {
+  const controller = new AbortController();
+  const forwardAbort = () => controller.abort();
+  if (parentSignal.aborted) {
+    controller.abort();
+  } else {
+    parentSignal.addEventListener("abort", forwardAbort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    abort: () => controller.abort(),
+    dispose: () => parentSignal.removeEventListener("abort", forwardAbort),
+  };
 }
 
 async function* abortable<T>(
