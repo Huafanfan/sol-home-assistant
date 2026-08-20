@@ -25,7 +25,7 @@ final class SatelliteProtocolTests: XCTestCase {
         let hello = try SatelliteFrameCodec.encode(SatelliteFrame(kind: .hello))
         let mutations: [(Int, UInt8, SatelliteProtocolFailure)] = [
             (0, 0, .invalidMagic),
-            (4, 2, .unsupportedVersion),
+            (4, 3, .unsupportedVersion),
             (5, 0xff, .unknownKind),
             (7, 1, .nonzeroFlags),
         ]

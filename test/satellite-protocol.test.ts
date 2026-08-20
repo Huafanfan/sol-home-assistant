@@ -4,9 +4,13 @@ import test from "node:test";
 import {
   assertGatewayFrame,
   assertSatelliteFrame,
+  decodeActivationCapabilities,
+  encodeActivationCapabilities,
   encodeCaptureDuration,
   encodeSatelliteFrame,
   MAX_SATELLITE_AUDIO_BYTES,
+  SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION,
+  SatelliteActivationCapability,
   SatelliteFrameDecoder,
   SatelliteMessageKind,
   SatelliteProtocolError,
@@ -55,6 +59,55 @@ test("decodes multiple frames from one transport chunk", () => {
   ]);
 });
 
+test("uses an explicit v2 capability frame for local activation", () => {
+  const hello = {
+    version: SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION,
+    kind: SatelliteMessageKind.hello,
+    payload: encodeActivationCapabilities(
+      SatelliteActivationCapability.localActivation,
+    ),
+  } as const;
+  const encoded = encodeSatelliteFrame(hello);
+
+  assert.deepEqual([...encoded.subarray(0, 12)], [
+    0x53, 0x4f, 0x4c, 0x31, 2, 1, 0, 0, 0, 0, 0, 1,
+  ]);
+  assert.deepEqual(new SatelliteFrameDecoder().push(encoded), [hello]);
+  assert.equal(
+    decodeActivationCapabilities(hello.payload),
+    SatelliteActivationCapability.localActivation,
+  );
+  assertSatelliteFrame(hello);
+  assertGatewayFrame({
+    version: SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION,
+    kind: SatelliteMessageKind.startLocalListening,
+    payload: new Uint8Array(),
+  });
+
+  assert.throws(
+    () =>
+      encodeSatelliteFrame({
+        version: SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION,
+        kind: SatelliteMessageKind.hello,
+        payload: Uint8Array.of(0x80),
+      }),
+    (error: unknown) =>
+      error instanceof SatelliteProtocolError &&
+      error.code === "invalid_payload",
+  );
+  assert.throws(
+    () =>
+      assertSatelliteFrame({
+        version: SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION,
+        kind: SatelliteMessageKind.startLocalListening,
+        payload: new Uint8Array(),
+      }),
+    (error: unknown) =>
+      error instanceof SatelliteProtocolError &&
+      error.code === "invalid_direction",
+  );
+});
+
 test("rejects invalid headers, limits, payload shapes, and directions", () => {
   const hello = encodeSatelliteFrame({
     kind: SatelliteMessageKind.hello,
@@ -62,7 +115,7 @@ test("rejects invalid headers, limits, payload shapes, and directions", () => {
   });
   const cases: Array<[number, number, SatelliteProtocolError["code"]]> = [
     [0, 0, "invalid_magic"],
-    [4, 2, "unsupported_version"],
+    [4, 3, "unsupported_version"],
     [5, 0xff, "unknown_kind"],
     [7, 1, "nonzero_flags"],
   ];

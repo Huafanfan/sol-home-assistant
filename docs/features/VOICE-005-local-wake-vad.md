@@ -138,16 +138,17 @@ CLOSING
 
 | 项目 | 证据 |
 | --- | --- |
-| 实现路径 | 待实现 |
+| 实现路径 | `apps/voice-satellite-macos/Sources/SolVoiceSatelliteCore/SatelliteProtocol.swift` 的显式 local-activation v2 帧与能力校验；`LocalActivation.swift` 的可注入本地唤醒/VAD 状态机、有界本地窗口和仅在 `speechStarted` 后产生 `audioForGateway` 的门控；`apps/voice-gateway/src/satellite/local-activation.ts` 的仅在 v2 `speechStarted` 后创建 VoiceSession 的 Gateway 门控。当前尚未把 v2 接入 AVFoundation/子进程 client，也未加载真实检测器。 |
 | 文档/ADR 更新 | 2026-08-20：新增本规格与 ADR-0006，并同步 START-HERE、架构、路线图、功能目录和 README；未修改 Provider、部署或运行配置 |
-| 静态检查 | 待实现 |
-| 自动化测试 | 待实现 |
-| 本机进程运行验证 | 待实现 |
+| 静态检查 | 2026-08-20：`npm run typecheck` 通过。 |
+| 自动化测试 | 2026-08-20：`npm run check` 51/51 通过；`npm run test:swift-satellite` 14/14 通过。新增 Node/Swift 测试覆盖 v2 能力、未知能力/方向拒绝、唤醒前/误唤醒零会话、`speechStarted` 后才转发 PCM、VAD 结束、停止与缓冲清空。 |
+| 本机进程运行验证 | 2026-08-20：`npm run check:satellite-protocol` 通过（v1 子进程 hello→shutdown，2 帧、退出码 0），证明 VOICE-004 手动协议回归保持兼容；v2 仍未接入可执行程序，故不是本地监听验证。 |
 | 真实运行/人工验收 | 待取得明确授权后执行 |
-| 已知限制或未验证假设 | 唤醒引擎真实准确率、模型运行时/许可、实际 VAD 阈值、CPU/内存、房间噪声和回声均未验证；AEC、降噪、语音驱动打断、免手连续会话和常驻恢复不在本第一片内 |
+| 已知限制或未验证假设 | 当前仅完成离线协议与可注入替身基础，尚未接入 v2 Satellite/TypeScript transport、AVFoundation 前台监听、真实唤醒模型或真实 VAD；因此没有真实 ASR 零调用、自动结束、CPU/内存、房间噪声/回声或用户体验证据。AEC、降噪、语音驱动打断、免手连续会话和常驻恢复不在本第一片内。 |
 
 ## 10. 复核记录
 
 | 日期 | session / 变更 | 阅读和复核的文档 | 结论 |
 | --- | --- | --- | --- |
 | 2026-08-20 | 建立 VOICE-005 本地唤醒与自动 VAD 第一片 | START-HERE、功能模板、MVP、架构、Provider、Deployment、ADR-0001/2/3/4/5、VOICE-001/2/3/4 | `accepted`；可以开始离线的协议、状态机和测试替身实现。真实检测器依赖、监听和云端调用仍需独立授权，AEC/降噪/免手连续会话/常驻恢复不在本第一片内 |
+| 2026-08-20 | 第一段离线实现 | 本规格、ADR-0006、VOICE-004 协议/运行时与 VOICE-001 会话边界 | v2 能力与方向校验、Swift 本地门控及 Gateway `speechStarted` 会话门控均有离线测试；没有真实模型、监听或云端调用，状态保持 `accepted`，下一步是受控接入而非宣称已验收。 |

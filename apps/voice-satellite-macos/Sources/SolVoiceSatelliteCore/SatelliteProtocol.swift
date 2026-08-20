@@ -1,11 +1,30 @@
 import Foundation
 
+public enum SatelliteProtocolVersion: UInt8, CaseIterable, Sendable {
+    case v1 = 1
+    case localActivationV2 = 2
+}
+
 public enum SatelliteProtocolV1 {
-    public static let version: UInt8 = 1
+    public static let version = SatelliteProtocolVersion.v1.rawValue
     public static let headerBytes = 12
     public static let maximumAudioBytes = 65_536
     public static let maximumControlBytes = 16
     static let magic = Data([0x53, 0x4f, 0x4c, 0x31])
+}
+
+public enum SatelliteProtocolV2 {
+    public static let version = SatelliteProtocolVersion.localActivationV2.rawValue
+}
+
+public struct SatelliteActivationCapabilities: OptionSet, Equatable, Sendable {
+    public let rawValue: UInt8
+
+    public init(rawValue: UInt8) {
+        self.rawValue = rawValue
+    }
+
+    public static let localActivation = SatelliteActivationCapabilities(rawValue: 0x01)
 }
 
 public enum SatelliteMessageKind: UInt8, CaseIterable, Sendable {
@@ -26,13 +45,27 @@ public enum SatelliteMessageKind: UInt8, CaseIterable, Sendable {
     case error = 0x0f
     case shutdown = 0x10
     case shutdownComplete = 0x11
+    case startLocalListening = 0x20
+    case localListeningStarted = 0x21
+    case wakeDetected = 0x22
+    case speechStarted = 0x23
+    case speechEnded = 0x24
+    case stopLocalListening = 0x25
+    case localListeningStopped = 0x26
+    case wakeTimedOut = 0x27
 }
 
 public struct SatelliteFrame: Equatable, Sendable {
+    public let version: SatelliteProtocolVersion
     public let kind: SatelliteMessageKind
     public let payload: Data
 
-    public init(kind: SatelliteMessageKind, payload: Data = Data()) {
+    public init(
+        version: SatelliteProtocolVersion = .v1,
+        kind: SatelliteMessageKind,
+        payload: Data = Data()
+    ) {
+        self.version = version
         self.kind = kind
         self.payload = payload
     }
@@ -55,7 +88,7 @@ public enum SatelliteFrameCodec {
         var encoded = Data()
         encoded.reserveCapacity(SatelliteProtocolV1.headerBytes + frame.payload.count)
         encoded.append(SatelliteProtocolV1.magic)
-        encoded.append(SatelliteProtocolV1.version)
+        encoded.append(frame.version.rawValue)
         encoded.append(frame.kind.rawValue)
         encoded.appendUInt16BE(0)
         encoded.appendUInt32BE(UInt32(frame.payload.count))
@@ -64,14 +97,14 @@ public enum SatelliteFrameCodec {
     }
 
     public static func validateGatewayFrame(_ frame: SatelliteFrame) throws {
-        guard gatewayKinds.contains(frame.kind) else {
+        guard gatewayKinds(for: frame.version).contains(frame.kind) else {
             throw SatelliteProtocolFailure.invalidDirection
         }
         try validate(frame)
     }
 
     public static func validateSatelliteFrame(_ frame: SatelliteFrame) throws {
-        guard satelliteKinds.contains(frame.kind) else {
+        guard satelliteKinds(for: frame.version).contains(frame.kind) else {
             throw SatelliteProtocolFailure.invalidDirection
         }
         try validate(frame)
@@ -97,56 +130,171 @@ public enum SatelliteFrameCodec {
         return payload
     }
 
+    public static func activationCapabilitiesPayload(
+        _ capabilities: SatelliteActivationCapabilities
+    ) throws -> Data {
+        try validateActivationCapabilities(capabilities)
+        return Data([capabilities.rawValue])
+    }
+
+    public static func activationCapabilities(
+        from payload: Data
+    ) throws -> SatelliteActivationCapabilities {
+        guard payload.count == 1 else {
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+        let capabilities = SatelliteActivationCapabilities(rawValue: payload[0])
+        try validateActivationCapabilities(capabilities)
+        return capabilities
+    }
+
     static func validate(_ frame: SatelliteFrame) throws {
         let length = frame.payload.count
-        let limit = isAudio(frame.kind)
-            ? SatelliteProtocolV1.maximumAudioBytes
-            : SatelliteProtocolV1.maximumControlBytes
+        let limit = maximumPayloadBytes(for: frame.version, kind: frame.kind)
         guard length <= limit else {
             throw SatelliteProtocolFailure.payloadTooLarge
         }
 
-        switch frame.kind {
-        case .hello, .requestPermission, .captureStarted, .stopCapture,
-             .playbackStarted, .cancel, .cancelled, .deviceChanged,
-             .shutdown, .shutdownComplete:
-            guard length == 0 else { throw SatelliteProtocolFailure.invalidPayload }
-        case .permissionState:
-            guard length == 1, (frame.payload.first ?? 0xff) <= 3 else {
-                throw SatelliteProtocolFailure.invalidPayload
-            }
-        case .startCapture:
-            _ = try captureDuration(from: frame.payload)
-        case .audioInput, .playAudio:
-            guard length >= 2, length.isMultiple(of: 2) else {
-                throw SatelliteProtocolFailure.invalidPayload
-            }
-        case .captureStopped:
-            guard length == 1, (frame.payload.first ?? 0xff) <= 4 else {
-                throw SatelliteProtocolFailure.invalidPayload
-            }
-        case .playbackFinished:
-            guard length == 1, (frame.payload.first ?? 0xff) <= 3 else {
-                throw SatelliteProtocolFailure.invalidPayload
-            }
-        case .error:
-            guard length == 2 else { throw SatelliteProtocolFailure.invalidPayload }
+        switch frame.version {
+        case .v1:
+            try validateV1Payload(kind: frame.kind, payload: frame.payload)
+        case .localActivationV2:
+            try validateV2Payload(kind: frame.kind, payload: frame.payload)
         }
     }
 
-    private static func isAudio(_ kind: SatelliteMessageKind) -> Bool {
-        kind == .audioInput || kind == .playAudio
+    static func maximumPayloadBytes(
+        for version: SatelliteProtocolVersion,
+        kind: SatelliteMessageKind
+    ) -> Int {
+        isAudio(version: version, kind: kind)
+            ? SatelliteProtocolV1.maximumAudioBytes
+            : SatelliteProtocolV1.maximumControlBytes
     }
 
-    private static let gatewayKinds: Set<SatelliteMessageKind> = [
-        .requestPermission, .startCapture, .stopCapture, .playAudio,
-        .cancel, .shutdown,
-    ]
-    private static let satelliteKinds: Set<SatelliteMessageKind> = [
-        .hello, .permissionState, .captureStarted, .audioInput,
-        .captureStopped, .playbackStarted, .playbackFinished,
-        .cancelled, .deviceChanged, .error, .shutdownComplete,
-    ]
+    private static func validateV1Payload(
+        kind: SatelliteMessageKind,
+        payload: Data
+    ) throws {
+        let length = payload.count
+        switch kind {
+        case .hello, .requestPermission, .captureStarted, .stopCapture,
+             .playbackStarted, .cancel, .cancelled, .deviceChanged,
+             .shutdown, .shutdownComplete:
+            try requireLength(length, 0)
+        case .permissionState:
+            guard length == 1, (payload.first ?? 0xff) <= 3 else {
+                throw SatelliteProtocolFailure.invalidPayload
+            }
+        case .startCapture:
+            _ = try captureDuration(from: payload)
+        case .audioInput, .playAudio:
+            try validatePCM(payload)
+        case .captureStopped:
+            try validateStopReason(payload)
+        case .playbackFinished:
+            guard length == 1, (payload.first ?? 0xff) <= 3 else {
+                throw SatelliteProtocolFailure.invalidPayload
+            }
+        case .error:
+            try requireLength(length, 2)
+        default:
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
+
+    private static func validateV2Payload(
+        kind: SatelliteMessageKind,
+        payload: Data
+    ) throws {
+        let length = payload.count
+        switch kind {
+        case .hello:
+            _ = try activationCapabilities(from: payload)
+        case .requestPermission, .startLocalListening, .localListeningStarted,
+             .wakeDetected, .speechStarted, .speechEnded, .stopLocalListening,
+             .wakeTimedOut, .cancel, .cancelled, .deviceChanged, .shutdown,
+             .shutdownComplete:
+            try requireLength(length, 0)
+        case .permissionState:
+            guard length == 1, (payload.first ?? 0xff) <= 3 else {
+                throw SatelliteProtocolFailure.invalidPayload
+            }
+        case .audioInput:
+            try validatePCM(payload)
+        case .localListeningStopped:
+            try validateStopReason(payload)
+        case .error:
+            try requireLength(length, 2)
+        default:
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
+
+    private static func gatewayKinds(
+        for version: SatelliteProtocolVersion
+    ) -> Set<SatelliteMessageKind> {
+        switch version {
+        case .v1:
+            return [.requestPermission, .startCapture, .stopCapture, .playAudio,
+                    .cancel, .shutdown]
+        case .localActivationV2:
+            return [.requestPermission, .startLocalListening, .stopLocalListening,
+                    .cancel, .shutdown]
+        }
+    }
+
+    private static func satelliteKinds(
+        for version: SatelliteProtocolVersion
+    ) -> Set<SatelliteMessageKind> {
+        switch version {
+        case .v1:
+            return [.hello, .permissionState, .captureStarted, .audioInput,
+                    .captureStopped, .playbackStarted, .playbackFinished,
+                    .cancelled, .deviceChanged, .error, .shutdownComplete]
+        case .localActivationV2:
+            return [.hello, .permissionState, .localListeningStarted,
+                    .wakeDetected, .speechStarted, .audioInput, .speechEnded,
+                    .localListeningStopped, .wakeTimedOut, .cancelled,
+                    .deviceChanged, .error, .shutdownComplete]
+        }
+    }
+
+    private static func isAudio(
+        version: SatelliteProtocolVersion,
+        kind: SatelliteMessageKind
+    ) -> Bool {
+        kind == .audioInput || (version == .v1 && kind == .playAudio)
+    }
+
+    private static func validatePCM(_ payload: Data) throws {
+        guard payload.count >= 2, payload.count.isMultiple(of: 2) else {
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
+
+    private static func validateStopReason(_ payload: Data) throws {
+        guard payload.count == 1, (payload.first ?? 0xff) <= 4 else {
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
+
+    private static func validateActivationCapabilities(
+        _ capabilities: SatelliteActivationCapabilities
+    ) throws {
+        let raw = capabilities.rawValue
+        let known = SatelliteActivationCapabilities.localActivation.rawValue
+        let unknownBits = raw & ~known
+        guard raw != 0, unknownBits == 0 else {
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
+
+    private static func requireLength(_ actual: Int, _ expected: Int) throws {
+        guard actual == expected else {
+            throw SatelliteProtocolFailure.invalidPayload
+        }
+    }
 }
 
 public struct SatelliteFrameDecoder: Sendable {
@@ -163,7 +311,7 @@ public struct SatelliteFrameDecoder: Sendable {
             guard buffered.prefix(4) == SatelliteProtocolV1.magic else {
                 throw SatelliteProtocolFailure.invalidMagic
             }
-            guard buffered[4] == SatelliteProtocolV1.version else {
+            guard let version = SatelliteProtocolVersion(rawValue: buffered[4]) else {
                 throw SatelliteProtocolFailure.unsupportedVersion
             }
             guard let kind = SatelliteMessageKind(rawValue: buffered[5]) else {
@@ -173,9 +321,10 @@ public struct SatelliteFrameDecoder: Sendable {
                 throw SatelliteProtocolFailure.nonzeroFlags
             }
             let length = Int(buffered.readUInt32BE(at: 8))
-            let limit = (kind == .audioInput || kind == .playAudio)
-                ? SatelliteProtocolV1.maximumAudioBytes
-                : SatelliteProtocolV1.maximumControlBytes
+            let limit = SatelliteFrameCodec.maximumPayloadBytes(
+                for: version,
+                kind: kind
+            )
             guard length <= limit else {
                 throw SatelliteProtocolFailure.payloadTooLarge
             }
@@ -183,7 +332,7 @@ public struct SatelliteFrameDecoder: Sendable {
             guard buffered.count >= frameBytes else { break }
 
             let payload = Data(buffered[SatelliteProtocolV1.headerBytes..<frameBytes])
-            let frame = SatelliteFrame(kind: kind, payload: payload)
+            let frame = SatelliteFrame(version: version, kind: kind, payload: payload)
             try SatelliteFrameCodec.validate(frame)
             frames.append(frame)
             buffered = Data(buffered.dropFirst(frameBytes))

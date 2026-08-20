@@ -1,9 +1,31 @@
 const HEADER_BYTES = 12;
-const MAGIC = Uint8Array.of(0x53, 0x4f, 0x4c, 0x31); // SOL1
+const MAGIC = Uint8Array.of(0x53, 0x4f, 0x4c, 0x31); // SOL1 protocol family
 
+/**
+ * The established manual-capture transport. Keep this export as the default
+ * so every existing VOICE-004 caller continues to emit v1 frames.
+ */
 export const SATELLITE_PROTOCOL_VERSION = 1;
+
+/**
+ * Local activation uses an explicit protocol version rather than extending
+ * v1's manual-capture messages with new meaning.
+ */
+export const SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION = 2;
+
+export type SatelliteProtocolVersion =
+  | typeof SATELLITE_PROTOCOL_VERSION
+  | typeof SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION;
+
 export const MAX_SATELLITE_AUDIO_BYTES = 65_536;
 export const MAX_SATELLITE_CONTROL_BYTES = 16;
+
+export const SatelliteActivationCapability = {
+  localActivation: 0x01,
+} as const;
+
+const KNOWN_ACTIVATION_CAPABILITIES =
+  SatelliteActivationCapability.localActivation;
 
 export const SatelliteMessageKind = {
   hello: 0x01,
@@ -23,6 +45,14 @@ export const SatelliteMessageKind = {
   error: 0x0f,
   shutdown: 0x10,
   shutdownComplete: 0x11,
+  startLocalListening: 0x20,
+  localListeningStarted: 0x21,
+  wakeDetected: 0x22,
+  speechStarted: 0x23,
+  speechEnded: 0x24,
+  stopLocalListening: 0x25,
+  localListeningStopped: 0x26,
+  wakeTimedOut: 0x27,
 } as const;
 
 export type SatelliteMessageKind =
@@ -56,13 +86,20 @@ export class SatelliteProtocolError extends Error {
   }
 }
 
+/**
+ * Omitting version deliberately means the established v1 transport. Decoder
+ * output preserves that omission for v1 so existing callers keep their frame
+ * shapes; v2 frames always carry their explicit version.
+ */
 export interface SatelliteFrame {
+  readonly version?: SatelliteProtocolVersion;
   readonly kind: SatelliteMessageKind;
   readonly payload: Uint8Array;
 }
 
 const knownKinds = new Set<number>(Object.values(SatelliteMessageKind));
-const gatewayKinds = new Set<SatelliteMessageKind>([
+
+const gatewayKindsV1 = new Set<SatelliteMessageKind>([
   SatelliteMessageKind.requestPermission,
   SatelliteMessageKind.startCapture,
   SatelliteMessageKind.stopCapture,
@@ -70,7 +107,8 @@ const gatewayKinds = new Set<SatelliteMessageKind>([
   SatelliteMessageKind.cancel,
   SatelliteMessageKind.shutdown,
 ]);
-const satelliteKinds = new Set<SatelliteMessageKind>([
+
+const satelliteKindsV1 = new Set<SatelliteMessageKind>([
   SatelliteMessageKind.hello,
   SatelliteMessageKind.permissionState,
   SatelliteMessageKind.captureStarted,
@@ -84,25 +122,52 @@ const satelliteKinds = new Set<SatelliteMessageKind>([
   SatelliteMessageKind.shutdownComplete,
 ]);
 
+const gatewayKindsV2 = new Set<SatelliteMessageKind>([
+  SatelliteMessageKind.requestPermission,
+  SatelliteMessageKind.startLocalListening,
+  SatelliteMessageKind.stopLocalListening,
+  SatelliteMessageKind.cancel,
+  SatelliteMessageKind.shutdown,
+]);
+
+const satelliteKindsV2 = new Set<SatelliteMessageKind>([
+  SatelliteMessageKind.hello,
+  SatelliteMessageKind.permissionState,
+  SatelliteMessageKind.localListeningStarted,
+  SatelliteMessageKind.wakeDetected,
+  SatelliteMessageKind.speechStarted,
+  SatelliteMessageKind.audioInput,
+  SatelliteMessageKind.speechEnded,
+  SatelliteMessageKind.localListeningStopped,
+  SatelliteMessageKind.wakeTimedOut,
+  SatelliteMessageKind.cancelled,
+  SatelliteMessageKind.deviceChanged,
+  SatelliteMessageKind.error,
+  SatelliteMessageKind.shutdownComplete,
+]);
+
 export function assertGatewayFrame(frame: SatelliteFrame): void {
-  if (!gatewayKinds.has(frame.kind)) {
+  const version = frameVersion(frame);
+  if (!gatewayKindsFor(version).has(frame.kind)) {
     throw new SatelliteProtocolError("invalid_direction");
   }
-  validatePayload(frame.kind, frame.payload);
+  validatePayload(version, frame.kind, frame.payload);
 }
 
 export function assertSatelliteFrame(frame: SatelliteFrame): void {
-  if (!satelliteKinds.has(frame.kind)) {
+  const version = frameVersion(frame);
+  if (!satelliteKindsFor(version).has(frame.kind)) {
     throw new SatelliteProtocolError("invalid_direction");
   }
-  validatePayload(frame.kind, frame.payload);
+  validatePayload(version, frame.kind, frame.payload);
 }
 
 export function encodeSatelliteFrame(frame: SatelliteFrame): Uint8Array {
-  validatePayload(frame.kind, frame.payload);
+  const version = frameVersion(frame);
+  validatePayload(version, frame.kind, frame.payload);
   const encoded = new Uint8Array(HEADER_BYTES + frame.payload.byteLength);
   encoded.set(MAGIC, 0);
-  encoded[4] = SATELLITE_PROTOCOL_VERSION;
+  encoded[4] = version;
   encoded[5] = frame.kind;
   writeUint16(encoded, 6, 0);
   writeUint32(encoded, 8, frame.payload.byteLength);
@@ -127,18 +192,22 @@ export class SatelliteFrameDecoder {
     let offset = 0;
     while (this.#buffer.byteLength - offset >= HEADER_BYTES) {
       const view = this.#buffer.subarray(offset);
-      validateHeader(view);
+      const version = validateHeader(view);
       const kind = view[5] as SatelliteMessageKind;
       const payloadLength = readUint32(view, 8);
-      validateDeclaredLength(kind, payloadLength);
+      validateDeclaredLength(version, kind, payloadLength);
       const frameLength = HEADER_BYTES + payloadLength;
       if (view.byteLength < frameLength) {
         break;
       }
 
       const payload = view.slice(HEADER_BYTES, frameLength);
-      validatePayload(kind, payload);
-      frames.push({ kind, payload });
+      validatePayload(version, kind, payload);
+      frames.push(
+        version === SATELLITE_PROTOCOL_VERSION
+          ? { kind, payload }
+          : { version, kind, payload },
+      );
       offset += frameLength;
     }
 
@@ -176,7 +245,44 @@ export function decodeCaptureDuration(payload: Uint8Array): number {
   return durationMs;
 }
 
-function validateHeader(bytes: Uint8Array): void {
+export function encodeActivationCapabilities(capabilities: number): Uint8Array {
+  if (
+    !Number.isInteger(capabilities) ||
+    capabilities <= 0 ||
+    capabilities > 0xff ||
+    (capabilities & ~KNOWN_ACTIVATION_CAPABILITIES) !== 0
+  ) {
+    throw new SatelliteProtocolError("invalid_payload");
+  }
+  return Uint8Array.of(capabilities);
+}
+
+export function decodeActivationCapabilities(payload: Uint8Array): number {
+  if (payload.byteLength !== 1) {
+    throw new SatelliteProtocolError("invalid_payload");
+  }
+  const capabilities = payload[0] ?? 0;
+  if (
+    capabilities === 0 ||
+    (capabilities & ~KNOWN_ACTIVATION_CAPABILITIES) !== 0
+  ) {
+    throw new SatelliteProtocolError("invalid_payload");
+  }
+  return capabilities;
+}
+
+function frameVersion(frame: SatelliteFrame): SatelliteProtocolVersion {
+  const version = frame.version ?? SATELLITE_PROTOCOL_VERSION;
+  if (
+    version !== SATELLITE_PROTOCOL_VERSION &&
+    version !== SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION
+  ) {
+    throw new SatelliteProtocolError("unsupported_version");
+  }
+  return version;
+}
+
+function validateHeader(bytes: Uint8Array): SatelliteProtocolVersion {
   if (
     bytes[0] !== MAGIC[0] ||
     bytes[1] !== MAGIC[1] ||
@@ -185,7 +291,11 @@ function validateHeader(bytes: Uint8Array): void {
   ) {
     throw new SatelliteProtocolError("invalid_magic");
   }
-  if (bytes[4] !== SATELLITE_PROTOCOL_VERSION) {
+  const version = bytes[4];
+  if (
+    version !== SATELLITE_PROTOCOL_VERSION &&
+    version !== SATELLITE_LOCAL_ACTIVATION_PROTOCOL_VERSION
+  ) {
     throw new SatelliteProtocolError("unsupported_version");
   }
   const rawKind = bytes[5];
@@ -195,13 +305,15 @@ function validateHeader(bytes: Uint8Array): void {
   if (readUint16(bytes, 6) !== 0) {
     throw new SatelliteProtocolError("nonzero_flags");
   }
+  return version;
 }
 
 function validateDeclaredLength(
+  version: SatelliteProtocolVersion,
   kind: SatelliteMessageKind,
   payloadLength: number,
 ): void {
-  const limit = isAudioKind(kind)
+  const limit = isAudioKind(version, kind)
     ? MAX_SATELLITE_AUDIO_BYTES
     : MAX_SATELLITE_CONTROL_BYTES;
   if (payloadLength > limit) {
@@ -210,10 +322,19 @@ function validateDeclaredLength(
 }
 
 function validatePayload(
+  version: SatelliteProtocolVersion,
   kind: SatelliteMessageKind,
   payload: Uint8Array,
 ): void {
-  validateDeclaredLength(kind, payload.byteLength);
+  validateDeclaredLength(version, kind, payload.byteLength);
+  if (version === SATELLITE_PROTOCOL_VERSION) {
+    validateV1Payload(kind, payload);
+    return;
+  }
+  validateV2Payload(kind, payload);
+}
+
+function validateV1Payload(kind: SatelliteMessageKind, payload: Uint8Array): void {
   const length = payload.byteLength;
   switch (kind) {
     case SatelliteMessageKind.hello:
@@ -239,15 +360,10 @@ function validatePayload(
       return;
     case SatelliteMessageKind.audioInput:
     case SatelliteMessageKind.playAudio:
-      if (length < 2 || length % 2 !== 0) {
-        throw new SatelliteProtocolError("invalid_payload");
-      }
+      validatePcmPayload(payload);
       return;
     case SatelliteMessageKind.captureStopped:
-      requireLength(length, 1);
-      if ((payload[0] ?? 0xff) > 4) {
-        throw new SatelliteProtocolError("invalid_payload");
-      }
+      validateStopReason(payload);
       return;
     case SatelliteMessageKind.playbackFinished:
       requireLength(length, 1);
@@ -258,14 +374,90 @@ function validatePayload(
     case SatelliteMessageKind.error:
       requireLength(length, 2);
       return;
+    default:
+      throw new SatelliteProtocolError("invalid_payload");
   }
 }
 
-function isAudioKind(kind: SatelliteMessageKind): boolean {
+function validateV2Payload(kind: SatelliteMessageKind, payload: Uint8Array): void {
+  const length = payload.byteLength;
+  switch (kind) {
+    case SatelliteMessageKind.hello:
+      decodeActivationCapabilities(payload);
+      return;
+    case SatelliteMessageKind.requestPermission:
+    case SatelliteMessageKind.startLocalListening:
+    case SatelliteMessageKind.localListeningStarted:
+    case SatelliteMessageKind.wakeDetected:
+    case SatelliteMessageKind.speechStarted:
+    case SatelliteMessageKind.speechEnded:
+    case SatelliteMessageKind.stopLocalListening:
+    case SatelliteMessageKind.wakeTimedOut:
+    case SatelliteMessageKind.cancel:
+    case SatelliteMessageKind.cancelled:
+    case SatelliteMessageKind.deviceChanged:
+    case SatelliteMessageKind.shutdown:
+    case SatelliteMessageKind.shutdownComplete:
+      requireLength(length, 0);
+      return;
+    case SatelliteMessageKind.permissionState:
+      requireLength(length, 1);
+      if ((payload[0] ?? 0xff) > 3) {
+        throw new SatelliteProtocolError("invalid_payload");
+      }
+      return;
+    case SatelliteMessageKind.audioInput:
+      validatePcmPayload(payload);
+      return;
+    case SatelliteMessageKind.localListeningStopped:
+      validateStopReason(payload);
+      return;
+    case SatelliteMessageKind.error:
+      requireLength(length, 2);
+      return;
+    default:
+      throw new SatelliteProtocolError("invalid_payload");
+  }
+}
+
+function gatewayKindsFor(
+  version: SatelliteProtocolVersion,
+): ReadonlySet<SatelliteMessageKind> {
+  return version === SATELLITE_PROTOCOL_VERSION
+    ? gatewayKindsV1
+    : gatewayKindsV2;
+}
+
+function satelliteKindsFor(
+  version: SatelliteProtocolVersion,
+): ReadonlySet<SatelliteMessageKind> {
+  return version === SATELLITE_PROTOCOL_VERSION
+    ? satelliteKindsV1
+    : satelliteKindsV2;
+}
+
+function isAudioKind(
+  version: SatelliteProtocolVersion,
+  kind: SatelliteMessageKind,
+): boolean {
   return (
     kind === SatelliteMessageKind.audioInput ||
-    kind === SatelliteMessageKind.playAudio
+    (version === SATELLITE_PROTOCOL_VERSION &&
+      kind === SatelliteMessageKind.playAudio)
   );
+}
+
+function validatePcmPayload(payload: Uint8Array): void {
+  if (payload.byteLength < 2 || payload.byteLength % 2 !== 0) {
+    throw new SatelliteProtocolError("invalid_payload");
+  }
+}
+
+function validateStopReason(payload: Uint8Array): void {
+  requireLength(payload.byteLength, 1);
+  if ((payload[0] ?? 0xff) > 4) {
+    throw new SatelliteProtocolError("invalid_payload");
+  }
 }
 
 function requireLength(actual: number, expected: number): void {
