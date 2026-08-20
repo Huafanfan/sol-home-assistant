@@ -9,9 +9,9 @@
 - 产品边界：单房间、单已授权用户、无现实世界副作用的 MVP。
 - 中心主机：现有 Apple Silicon Mac mini；容器运行时为 OrbStack Docker Engine 与 Docker Compose。
 - 语音链路：本地唤醒/VAD → 腾讯云实时 ASR/TTS → Gateway → 可替换的文本深度推理适配器。
-- 当前阶段：VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；VOICE-004 已实现 Swift/AVFoundation macOS Voice Satellite、同机二进制协议和手动轮次编排，离线测试、真实子进程协议及真实麦克风→云端→扬声器中文单轮、启动前零调用、播放中手动打断、工作区无落盘和控制台用量复核均已通过。真实设备切换/断开与拒绝/受限权限路径由用户暂缓，故状态保持 `implemented`；唤醒/VAD/AEC 继续由后续 VOICE-005 负责。
+- 当前阶段：VOICE-002 文本适配器和 VOICE-003 腾讯云实时语音适配器均已完成真实验收；VOICE-004 已实现 Swift/AVFoundation macOS Voice Satellite、同机二进制协议和手动轮次编排，离线测试、真实子进程协议及真实麦克风→云端→扬声器中文单轮、启动前零调用、播放中手动打断、工作区无落盘和控制台用量复核均已通过。真实设备切换/断开与拒绝/受限权限路径由用户暂缓，故状态保持 `implemented`。VOICE-005 的本地唤醒与自动 VAD 第一片及 ADR 已接受，尚未开始实现；AEC、降噪、语音驱动打断、免手连续对话和常驻恢复仍由后续规格负责。
 
-VOICE-004 的权威状态和暂缓项见 [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md)：未取得设备变化与拒绝权限的真实证据前，不把它标记为 `verified`。后续新功能仍须从 [`templates/feature-spec.md`](templates/feature-spec.md) 创建 `docs/features/<feature>.md`，并将其推进到 `accepted`。
+VOICE-004 的权威状态和暂缓项见 [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md)：未取得设备变化与拒绝权限的真实证据前，不把它标记为 `verified`。下一实现入口是已接受的 [VOICE-005：本地唤醒与自动 VAD（第一片）](features/VOICE-005-local-wake-vad.md)；真实模型依赖、监听和云端调用仍须单独授权。
 
 ## 按工作类型阅读
 
@@ -52,6 +52,7 @@ VOICE-004 的权威状态和暂缓项见 [VOICE-004：macOS Voice Satellite 本�
 - [ADR-0003：Mac mini 和 OrbStack 容器化中心](decisions/ADR-0003-mac-mini-orbstack-deployment.md)
 - [ADR-0004：文档驱动的规格先行开发](decisions/ADR-0004-documentation-driven-development.md)
 - [ADR-0005：原生 macOS Voice Satellite](decisions/ADR-0005-native-macos-voice-satellite.md)
+- [ADR-0006：本地唤醒与自动 VAD 的 Satellite 边界](decisions/ADR-0006-local-wake-vad-boundary.md)
 
 ## 当前功能规格
 
@@ -61,3 +62,4 @@ VOICE-004 的权威状态和暂缓项见 [VOICE-004：macOS Voice Satellite 本�
 | [VOICE-002：文本深度推理适配器准备与探测](features/VOICE-002-text-reasoner-readiness.md) | `verified` | 已完成安全适配、0600 本机 `.env`、mock 与真实 Probe 验收；默认 `gpt-5.6-terra` |
 | [VOICE-003：腾讯云实时 ASR/TTS 适配器与安全探测](features/VOICE-003-tencent-realtime-voice-adapters.md) | `verified` | 31/31 自动化、真实 TTS→ASR 指标、独立取消和控制台用量复核均已通过 |
 | [VOICE-004：macOS Voice Satellite 本机音频闭环](features/VOICE-004-macos-voice-satellite.md) | `implemented` | 离线、真实子进程、中文单轮、零调用、手动打断和用量/无落盘复核通过；设备变化与拒绝权限由用户暂缓 |
+| [VOICE-005：本地唤醒与自动 VAD（第一片）](features/VOICE-005-local-wake-vad.md) | `accepted` | 先实现本地监听、唤醒、自动 VAD、能力协商与离线替身；真实引擎/监听/云端调用需另行授权 |

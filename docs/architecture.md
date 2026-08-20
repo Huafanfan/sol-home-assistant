@@ -24,7 +24,7 @@
 
 负责本地激活、唤醒/VAD、音频采集/播放、物理静音按钮和本地状态。未激活音频不离开设备。它只与 Gateway 连接，不应承载腾讯云、文本推理提供方或数据库凭据，也不应拥有跨房间权限。
 
-首版按 [ADR-0005](decisions/ADR-0005-native-macos-voice-satellite.md) 在开发机上以 Swift/AVFoundation 实现原生 macOS 宿主进程。VOICE-004 先通过版本化的同机进程协议完成手动激活、麦克风采集、扬声器播放和手动打断；唤醒、自动 VAD、AEC/降噪和认证 LAN Satellite 协议由后续规格实现。实际硬件需通过真实房间的唤醒、噪声和回声测试后再选型。
+首版按 [ADR-0005](decisions/ADR-0005-native-macos-voice-satellite.md) 在开发机上以 Swift/AVFoundation 实现原生 macOS 宿主进程。VOICE-004 先通过版本化的同机进程协议完成手动激活、麦克风采集、扬声器播放和手动打断；[ADR-0006](decisions/ADR-0006-local-wake-vad-boundary.md) 已接受 VOICE-005 第一片把前台本地唤醒和自动 VAD 留在同一 Satellite 内，且只有唤醒后开始说话的音频可进入 Gateway。AEC/降噪、语音驱动打断、免手连续会话和认证 LAN Satellite 协议仍由后续规格实现。实际硬件需通过真实房间的唤醒、噪声和回声测试后再选型。
 
 ### Voice Gateway
 
@@ -88,12 +88,18 @@ Dockerfile 与 compose.yaml 是跨主机契约，而非 macOS 专属实现：当
 
 ~~~text
 IDLE
-  └─ 本地唤醒词 ─► AWAKE
-AWAKE
-  └─ 获得局域网授权并连接 ─► ASR_STREAMING
+  └─ 用户显式启动前台本地监听 ─► LOCAL_LISTENING
+LOCAL_LISTENING
+  ├─ 本地唤醒词命中 ─► AWAKE_LOCAL
+  ├─ 停止 / 权限或设备失败 ─► IDLE
+  └─ 未命中 ─► LOCAL_LISTENING
+AWAKE_LOCAL
+  ├─ 本地 VAD speech_started ─► ASR_STREAMING
+  ├─ 无语音超时 / 误唤醒 ─► LOCAL_LISTENING
+  └─ 停止 / 权限或设备失败 ─► IDLE
 ASR_STREAMING
   ├─ 部分转写 ─► ASR_STREAMING
-  ├─ 最终转写 / 判停 ─► ROUTING
+  ├─ 本地 VAD speech_ended / 判停 ─► ROUTING
   ├─ 超时 / 取消 ─► CLOSING
   └─ 用户继续说话 ─► ASR_STREAMING
 ROUTING
@@ -105,18 +111,18 @@ DEEP_REASONING
   └─ 取消 ─► CLOSING
 TTS_STREAMING
   ├─ 音频包 ─► SPEAKING
-  ├─ 用户打断 ─► ASR_STREAMING
-  └─ 输出完成 ─► LISTENING
+  ├─ 显式手动打断 ─► CLOSING
+  └─ 输出完成 ─► CLOSING
 SPEAKING
-  ├─ 用户打断 ─► ASR_STREAMING
-  └─ 当前片段结束 ─► TTS_STREAMING / LISTENING
+  ├─ 显式手动打断 ─► CLOSING
+  └─ 当前片段结束 ─► TTS_STREAMING / CLOSING
 FALLBACK
   └─ 本地短提示 ─► CLOSING
 CLOSING
-  └─ 生成会话摘要、执行 Memory Policy ─► IDLE
+  └─ 清理完成 ─► LOCAL_LISTENING（用户仍启用）/ IDLE
 ~~~
 
-LISTENING 表示等待同一已唤醒会话的下一轮语音；只有 ASR_STREAMING 能把音频发往云端。回答文本一旦可用即可启动 TTS，不必等待整段深度推理完成。
+`LOCAL_LISTENING` 和 `AWAKE_LOCAL` 只在 Satellite 内处理，只有 `ASR_STREAMING` 能把已唤醒且已开始说话后的音频发往云端。VOICE-005 第一片不启用语音驱动打断或同一上下文的免手连续会话；回答文本一旦可用仍可启动 TTS，不必等待整段深度推理完成。
 
 ## 数据与安全边界
 
@@ -146,7 +152,7 @@ MVP 不提供 web_search。任何具有现实世界副作用的能力（Home Ass
 
 ## 尚未做出的决策
 
-1. 唤醒引擎：先评测 openWakeWord；如果误唤醒或训练需求不达标，再评估 Porcupine。
+1. 唤醒引擎：按 [ADR-0006](decisions/ADR-0006-local-wake-vad-boundary.md) 先以 openWakeWord 作为本地评测候选；如果误唤醒、漏唤醒、模型/运行时或资源要求不达标，再评估 Porcupine，且不自动切换。
 2. ASR：用同一组真实房间样本比较标准实时 ASR 与大模型 2.0 ASR，再决定默认档位。
 3. TTS：以精品音色完成 POC，再根据首音频延迟、清晰度和主观自然度选择是否升级到大模型音色。
 4. 文本推理代理：以启动探测验证可用模型、流式、限流、超时和工具能力；无能力时必须有本地降级提示。
